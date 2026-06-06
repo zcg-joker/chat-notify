@@ -165,6 +165,26 @@ test("fails closed when a streaming response cannot be cloned for monitoring", a
   );
 });
 
+test("fails closed when a cloned streaming response cannot be read for monitoring", async () => {
+  const response = new Response("hello", { status: 200 });
+  Object.defineProperty(response, "clone", {
+    value() {
+      return { body: {} };
+    },
+  });
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => response,
+  });
+
+  const returnedResponse = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
+
+  assert.equal(returnedResponse, response);
+  assert.deepEqual(
+    bridge.details().map((detail) => detail.phase),
+    ["started", "failed"]
+  );
+});
+
 test("emits failed instead of completed for HTTP error responses without bodies", async () => {
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 500 }),

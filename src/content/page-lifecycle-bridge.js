@@ -109,7 +109,7 @@
           : null;
 
         if (!reader) {
-          postTerminalEvent("completed");
+          postTerminalEvent("failed");
           return response;
         }
 

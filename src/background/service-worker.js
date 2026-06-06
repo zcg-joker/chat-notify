@@ -42,9 +42,18 @@
 
     function notify(id, optionsForNotification) {
       return new Promise((resolve) => {
-        chromeApi.notifications.create(id, optionsForNotification, (createdId) => {
-          resolve(createdId);
-        });
+        try {
+          chromeApi.notifications.create(id, optionsForNotification, (createdId) => {
+            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            if (lastError) {
+              resolve({ ok: false, error: lastError.message || String(lastError) });
+              return;
+            }
+            resolve({ ok: true, createdId });
+          });
+        } catch (error) {
+          resolve({ ok: false, error: error && error.message ? error.message : String(error) });
+        }
       });
     }
 
@@ -64,7 +73,10 @@
         now(),
       ].join(":");
 
-      await notify(id, buildCompletionNotification(payload));
+      const notificationResult = await notify(id, buildCompletionNotification(payload));
+      if (!notificationResult.ok) {
+        return { ok: false, error: notificationResult.error, notificationId: id };
+      }
       return { ok: true, notificationId: id };
     }
 
@@ -77,7 +89,15 @@
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
     const service = createNotificationService({ chromeApi: chrome });
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      service.handleMessage(message, sender).then(sendResponse);
+      service
+        .handleMessage(message, sender)
+        .then(sendResponse)
+        .catch((error) => {
+          sendResponse({
+            ok: false,
+            error: error && error.message ? error.message : String(error),
+          });
+        });
       return true;
     });
   }

@@ -62,3 +62,76 @@ test("uses fallback notification message when excerpt is empty", async () => {
 
   assert.equal(created[0].options.message, "Your response is ready");
 });
+
+test("ignores non-completion messages", async () => {
+  const service = createNotificationService({
+    chromeApi: {
+      notifications: {
+        create() {
+          throw new Error("should not notify");
+        },
+      },
+    },
+  });
+
+  const result = await service.handleMessage({ type: "SOMETHING_ELSE" });
+
+  assert.deepEqual(result, { ok: false, ignored: true });
+});
+
+test("returns failure when Chrome reports notification error", async () => {
+  const service = createNotificationService({
+    chromeApi: {
+      runtime: {
+        lastError: { message: "notifications permission missing" },
+      },
+      notifications: {
+        create(id, options, callback) {
+          callback("");
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(
+    createResponseCompletedMessage({
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      sessionKey: "conversation:a",
+      sourceTabId: 3,
+      promptExcerpt: "hello",
+      completedAt: 1780761600000,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "notifications permission missing");
+});
+
+test("returns failure when notification API throws", async () => {
+  const service = createNotificationService({
+    chromeApi: {
+      notifications: {
+        create() {
+          throw new Error("notification API unavailable");
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(
+    createResponseCompletedMessage({
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      sessionKey: "conversation:a",
+      sourceTabId: 3,
+      promptExcerpt: "hello",
+      completedAt: 1780761600000,
+    })
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "notification API unavailable");
+});

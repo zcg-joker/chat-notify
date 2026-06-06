@@ -36,3 +36,16 @@ test("manifest declares content scripts in dependency order", () => {
     "src/content/content-script.js",
   ]);
 });
+
+test("manifest icons use supported PNG files", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8")
+  );
+
+  assert.deepEqual(Object.keys(manifest.icons).sort(), ["128", "16", "32", "48"]);
+
+  for (const iconPath of Object.values(manifest.icons)) {
+    assert.equal(path.extname(iconPath), ".png");
+    assert.equal(fs.existsSync(path.join(__dirname, "..", iconPath)), true);
+  }
+});

@@ -59,6 +59,36 @@
       return adapter.getSessionKey(getCurrentLocation(), root);
     }
 
+    function isTemporarySessionKey(sessionKey) {
+      return typeof sessionKey === "string" && sessionKey.startsWith("temp:");
+    }
+
+    function migrateMachine(fromKey, toKey) {
+      if (!machines.has(fromKey) || machines.has(toKey)) {
+        return;
+      }
+      machines.set(toKey, machines.get(fromKey));
+      machines.delete(fromKey);
+    }
+
+    function maybeMigrateToCurrentSessionKey() {
+      const currentSessionKey = getCurrentSessionKey();
+      if (!currentSessionKey || tracker.get(currentSessionKey) || isTemporarySessionKey(currentSessionKey)) {
+        return currentSessionKey;
+      }
+
+      const temporarySessions = tracker.list().filter((session) => isTemporarySessionKey(session.sessionKey));
+      if (temporarySessions.length !== 1) {
+        return currentSessionKey;
+      }
+
+      const fromKey = temporarySessions[0].sessionKey;
+      if (tracker.migrateSessionKey(fromKey, currentSessionKey)) {
+        migrateMachine(fromKey, currentSessionKey);
+      }
+      return currentSessionKey;
+    }
+
     function capturePromptExcerpt() {
       const promptText = adapter.getPromptDraft(root) || adapter.getLatestUserMessage(root);
       return deps.createPromptExcerpt(promptText);
@@ -85,7 +115,7 @@
     }
 
     function findSessionForLifecycle(lifecycleEvent) {
-      const sessions = tracker.list();
+      let sessions = tracker.list();
       if (lifecycleEvent.lifecycleId) {
         const matchingLifecycle = sessions.find(
           (session) => session.lifecycleId === lifecycleEvent.lifecycleId
@@ -95,10 +125,17 @@
         }
       }
 
-      const pending = sessions.find(
+      const currentSessionKey = maybeMigrateToCurrentSessionKey();
+      const currentRecord = tracker.get(currentSessionKey);
+      if (currentRecord && currentRecord.status === deps.RESPONSE_STATES.PENDING_USER_MESSAGE) {
+        return currentSessionKey;
+      }
+
+      sessions = tracker.list();
+      const pendingSessions = sessions.filter(
         (session) => session.status === deps.RESPONSE_STATES.PENDING_USER_MESSAGE
       );
-      return pending ? pending.sessionKey : "";
+      return pendingSessions.length === 1 ? pendingSessions[0].sessionKey : "";
     }
 
     function updateTrackerFromResult(sessionKey, lifecycleEvent, result) {

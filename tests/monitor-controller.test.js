@@ -119,7 +119,7 @@ test("routes known lifecycle events to the original same-tab session after switc
   );
 });
 
-test("associates an unmapped lifecycle with the first pending user message session", () => {
+test("associates an unmapped lifecycle with the current pending session after switching", () => {
   const adapterState = {
     sessionKey: "conversation:a",
     promptDraft: "Prompt for session A",
@@ -137,9 +137,65 @@ test("associates an unmapped lifecycle with the first pending user message sessi
   adapterState.promptDraft = "Prompt for session B";
   controller.handleUserSend();
 
-  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-a" });
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-b" });
 
   const pendingSessions = controller.getPendingSessions();
-  assert.equal(pendingSessions.find((session) => session.sessionKey === "conversation:a").lifecycleId, "life-a");
+  assert.equal(pendingSessions.find((session) => session.sessionKey === "conversation:a").lifecycleId, "");
+  assert.equal(pendingSessions.find((session) => session.sessionKey === "conversation:b").lifecycleId, "life-b");
+});
+
+test("ignores ambiguous unmapped lifecycle events instead of choosing the wrong session", () => {
+  const adapterState = {
+    sessionKey: "conversation:not-pending",
+    promptDraft: "",
+  };
+  const controller = createMonitorController({
+    adapter: createFakeAdapter(adapterState),
+    root: {},
+    sourceTabId: 7,
+    now: () => 1000,
+    onCompleted: () => {},
+  });
+
+  adapterState.sessionKey = "conversation:a";
+  adapterState.promptDraft = "Prompt for session A";
+  controller.handleUserSend();
+  adapterState.sessionKey = "conversation:b";
+  adapterState.promptDraft = "Prompt for session B";
+  controller.handleUserSend();
+  adapterState.sessionKey = "conversation:not-pending";
+
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-unknown" });
+
+  const pendingSessions = controller.getPendingSessions();
+  assert.equal(pendingSessions.find((session) => session.sessionKey === "conversation:a").lifecycleId, "");
   assert.equal(pendingSessions.find((session) => session.sessionKey === "conversation:b").lifecycleId, "");
+});
+
+test("migrates a temporary pending session to the current stable session key", () => {
+  let currentTime = 1000;
+  const completed = [];
+  const adapterState = {
+    sessionKey: "temp:chatgpt:new-chat",
+    promptDraft: "Prompt from a new chat",
+  };
+  const controller = createMonitorController({
+    adapter: createFakeAdapter(adapterState),
+    root: {},
+    sourceTabId: 7,
+    now: () => currentTime,
+    onCompleted: (event) => completed.push(event),
+    settleMs: 10,
+  });
+
+  controller.handleUserSend();
+  adapterState.sessionKey = "conversation:stable";
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-stable" });
+  controller.handleLifecycleEvent({ type: "GENERATION_COMPLETED", lifecycleId: "life-stable" });
+  currentTime = 1011;
+  controller.tick();
+
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].sessionKey, "conversation:stable");
+  assert.equal(completed[0].promptExcerpt, "Prompt from a new chat");
 });

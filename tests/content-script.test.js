@@ -43,7 +43,9 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
   const documentFixture = createFakeDocument();
   const sentMessages = [];
   const intervals = [];
+  const timeouts = [];
   const windowListeners = new Map();
+  const storageChangeListeners = [];
   const controllerCalls = {
     handleUserSend: 0,
     handleLifecycleEvent: [],
@@ -82,8 +84,8 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
       windowListeners.set(type, listener);
     },
     setTimeout(callback) {
-      callback();
-      return 1;
+      timeouts.push(callback);
+      return timeouts.length;
     },
     setInterval(callback, intervalMs) {
       intervals.push({ callback, intervalMs });
@@ -98,6 +100,11 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
       },
     },
     storage: {
+      onChanged: {
+        addListener(listener) {
+          storageChangeListeners.push(listener);
+        },
+      },
       sync: {
         get(_defaults, callback) {
           callback({ enabled });
@@ -123,6 +130,8 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
     documentFixture,
     intervals,
     sentMessages,
+    storageChangeListeners,
+    timeouts,
     window,
     windowListeners,
   };
@@ -168,6 +177,44 @@ test("captures user send events and forwards normalized lifecycle messages", () 
     { type: "GENERATION_STARTED", lifecycleId: "life-1" },
   ]);
   assert.equal(context.controllerCalls.tick, 1);
+});
+
+test("captures user send before a same-turn lifecycle message", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: { normalized: { type: "GENERATION_STARTED", lifecycleId: "life-1" } },
+    },
+  });
+  assert.equal(context.timeouts.length, 0);
+
+  assert.equal(context.controllerCalls.handleUserSend, 1);
+  assert.deepEqual(context.controllerCalls.handleLifecycleEvent, [
+    { type: "GENERATION_STARTED", lifecycleId: "life-1" },
+  ]);
+});
+
+test("stops processing send and lifecycle events after storage disables the extension", () => {
+  const context = createContentScriptContext();
+
+  context.storageChangeListeners[0]({ enabled: { newValue: false } }, "sync");
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: { normalized: { type: "GENERATION_STARTED", lifecycleId: "life-1" } },
+    },
+  });
+  context.intervals[0].callback();
+
+  assert.equal(context.controllerCalls.handleUserSend, 0);
+  assert.equal(context.controllerCalls.handleLifecycleEvent.length, 0);
+  assert.equal(context.controllerCalls.tick, 0);
 });
 
 test("sends completion messages through runtime messaging", () => {

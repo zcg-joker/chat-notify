@@ -66,6 +66,37 @@ test("uses fallback notification message when excerpt is empty", async () => {
   assert.equal(created[0].options.message, "Your response is ready");
 });
 
+test("does not create completion notifications when disabled in storage", async () => {
+  const service = createNotificationService({
+    chromeApi: {
+      storage: {
+        sync: {
+          get(_defaults, callback) {
+            callback({ enabled: false });
+          },
+        },
+      },
+      notifications: {
+        create() {
+          throw new Error("should not notify while disabled");
+        },
+      },
+    },
+  });
+
+  const result = await service.handleMessage(
+    createResponseCompletedMessage({
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      sessionKey: "conversation:a",
+      sourceTabId: 3,
+      promptExcerpt: "hello",
+    })
+  );
+
+  assert.deepEqual(result, { ok: false, ignored: true, disabled: true });
+});
+
 test("creates test notification", async () => {
   const created = [];
   const service = createNotificationService({

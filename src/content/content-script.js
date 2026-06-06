@@ -12,7 +12,12 @@
     return;
   }
 
+  let enabled = false;
+
   function sendCompletion(event) {
+    if (!enabled) {
+      return;
+    }
     chrome.runtime.sendMessage(api.createResponseCompletedMessage(event));
   }
 
@@ -35,14 +40,22 @@
   });
 
   function handlePossibleSend(event) {
+    if (!enabled) {
+      return;
+    }
+
     if (!adapter.isSendEvent(event)) {
       return;
     }
 
-    window.setTimeout(() => controller.handleUserSend(), 0);
+    controller.handleUserSend();
   }
 
   function handleLifecycleMessage(event) {
+    if (!enabled) {
+      return;
+    }
+
     if (event.source !== window) {
       return;
     }
@@ -58,15 +71,34 @@
     }
   }
 
-  chrome.storage.sync.get({ enabled: true }, (settings) => {
-    if (!settings.enabled) {
-      return;
+  function handleTick() {
+    if (enabled) {
+      controller.tick();
     }
+  }
 
+  function installObservers() {
     installLifecycleBridge();
     document.addEventListener("click", handlePossibleSend, true);
     document.addEventListener("keydown", handlePossibleSend, true);
     window.addEventListener("message", handleLifecycleMessage);
-    window.setInterval(() => controller.tick(), 500);
+    window.setInterval(handleTick, 500);
+  }
+
+  if (chrome.storage.onChanged && typeof chrome.storage.onChanged.addListener === "function") {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "sync" && changes.enabled) {
+        enabled = Boolean(changes.enabled.newValue);
+      }
+    });
+  }
+
+  chrome.storage.sync.get({ enabled: true }, (settings) => {
+    enabled = Boolean(settings.enabled);
+    if (!enabled) {
+      return;
+    }
+
+    installObservers();
   });
 })();

@@ -57,6 +57,28 @@
       });
     }
 
+    function getEnabled() {
+      return new Promise((resolve) => {
+        if (!chromeApi.storage || !chromeApi.storage.sync || typeof chromeApi.storage.sync.get !== "function") {
+          resolve(true);
+          return;
+        }
+
+        try {
+          chromeApi.storage.sync.get({ enabled: true }, (settings) => {
+            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            if (lastError) {
+              resolve(true);
+              return;
+            }
+            resolve(Boolean(settings.enabled));
+          });
+        } catch (_error) {
+          resolve(true);
+        }
+      });
+    }
+
     async function handleMessage(message, sender = {}) {
       if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
         const id = `chat-notify:test:${now()}`;
@@ -75,6 +97,10 @@
 
       if (!message || message.type !== MESSAGE_TYPES.AI_RESPONSE_COMPLETED) {
         return { ok: false, ignored: true };
+      }
+
+      if (!(await getEnabled())) {
+        return { ok: false, ignored: true, disabled: true };
       }
 
       const payload = message.payload || {};

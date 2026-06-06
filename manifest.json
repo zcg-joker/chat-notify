@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Notify",
+  "version": "0.1.0",
+  "description": "Notify when ChatGPT finishes responding.",
+  "permissions": ["notifications", "storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "action": {
+    "default_title": "Chat Notify",
+    "default_popup": "src/popup/popup.html"
+  },
+  "icons": {
+    "128": "assets/icon.svg"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "src/shared/constants.js",
+        "src/shared/messages.js",
+        "src/core/prompt-excerpt.js",
+        "src/core/state-machine.js",
+        "src/core/session-tracker.js",
+        "src/core/dom-watch.js",
+        "src/adapters/adapter-contract.js",
+        "src/adapters/chatgpt-adapter.js",
+        "src/core/monitor-controller.js",
+        "src/content/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/page-lifecycle-bridge.js", "assets/icon.svg"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ]
+    }
+  ]
+}

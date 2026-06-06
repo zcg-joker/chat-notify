@@ -58,7 +58,7 @@
     }
 
     function migrateSessionKey(fromKey, toKey) {
-      if (!fromKey || !toKey || fromKey === toKey || !sessions.has(fromKey)) {
+      if (!fromKey || !toKey || fromKey === toKey || !sessions.has(fromKey) || sessions.has(toKey)) {
         return false;
       }
       const record = sessions.get(fromKey);

@@ -40,6 +40,29 @@ test("migrates a temporary session key to a stable conversation key", () => {
   assert.equal(tracker.get("conversation:stable").promptExcerpt, "new chat");
 });
 
+test("does not migrate over an existing stable conversation key", () => {
+  const tracker = createSessionTracker({ now: () => 1000 });
+  tracker.upsertPending({
+    siteId: "chatgpt",
+    sessionKey: "conversation:stable",
+    sourceTabId: 9,
+    promptExcerpt: "existing question",
+  });
+  tracker.upsertPending({
+    siteId: "chatgpt",
+    sessionKey: "temp:1",
+    sourceTabId: 4,
+    promptExcerpt: "new chat",
+  });
+
+  const migrated = tracker.migrateSessionKey("temp:1", "conversation:stable");
+
+  assert.equal(migrated, false);
+  assert.equal(tracker.get("conversation:stable").promptExcerpt, "existing question");
+  assert.equal(tracker.get("conversation:stable").sourceTabId, 9);
+  assert.equal(tracker.get("temp:1").promptExcerpt, "new chat");
+});
+
 test("clear removes prompt excerpt from memory", () => {
   const tracker = createSessionTracker({ now: () => 1000 });
   tracker.upsertPending({
@@ -47,10 +70,12 @@ test("clear removes prompt excerpt from memory", () => {
     sessionKey: "conversation:a",
     sourceTabId: 1,
     promptExcerpt: "sensitive",
+    latestAssistantSnapshot: "also sensitive",
   });
 
   const removed = tracker.remove("conversation:a");
 
   assert.equal(removed.promptExcerpt, "");
+  assert.equal(removed.latestAssistantSnapshot, "");
   assert.equal(tracker.get("conversation:a"), null);
 });

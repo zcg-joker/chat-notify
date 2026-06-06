@@ -13,6 +13,7 @@
   }
 
   let enabled = false;
+  let observersInstalled = false;
 
   function sendCompletion(event) {
     if (!enabled) {
@@ -78,6 +79,11 @@
   }
 
   function installObservers() {
+    if (observersInstalled) {
+      return;
+    }
+    observersInstalled = true;
+
     installLifecycleBridge();
     document.addEventListener("click", handlePossibleSend, true);
     document.addEventListener("keydown", handlePossibleSend, true);
@@ -89,6 +95,9 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === "sync" && changes.enabled) {
         enabled = Boolean(changes.enabled.newValue);
+        if (enabled) {
+          installObservers();
+        }
       }
     });
   }

@@ -159,6 +159,17 @@ test("does not install listeners when disabled", () => {
   assert.equal(context.windowListeners.size, 0);
 });
 
+test("installs observers when storage changes from disabled to enabled", () => {
+  const context = createContentScriptContext({ enabled: false });
+
+  context.storageChangeListeners[0]({ enabled: { newValue: true } }, "sync");
+
+  assert.equal(context.documentFixture.scripts.length, 1);
+  assert.equal(context.documentFixture.listeners.get("click").useCapture, true);
+  assert.equal(context.windowListeners.has("message"), true);
+  assert.equal(context.intervals[0].intervalMs, 500);
+});
+
 test("captures user send events and forwards normalized lifecycle messages", () => {
   const context = createContentScriptContext();
 

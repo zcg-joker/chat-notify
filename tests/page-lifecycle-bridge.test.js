@@ -86,6 +86,28 @@ test("normalizes relative generation request URLs before posting lifecycle event
   assert.equal(Object.hasOwn(bridge.details()[0], "body"), false);
 });
 
+test("observes generation requests passed as URL objects", async () => {
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+
+  await bridge.window.fetch(new URL("https://chatgpt.com/backend-api/conversation?model=gpt-test"), {
+    method: "POST",
+  });
+
+  assert.deepEqual(
+    bridge.details().map((detail) => detail.phase),
+    ["started", "completed"]
+  );
+  assert.deepEqual(
+    bridge.details().map((detail) => detail.url),
+    [
+      "https://chatgpt.com/backend-api/conversation",
+      "https://chatgpt.com/backend-api/conversation",
+    ]
+  );
+});
+
 test("observes only exact ChatGPT generation paths", async () => {
   const requestedUrls = [];
   const bridge = createBridgeWindow({
@@ -121,6 +143,26 @@ test("observes only exact ChatGPT generation paths", async () => {
     "/backend-api/not-conversation",
     "https://example.com/backend-api/conversation",
   ]);
+});
+
+test("fails closed when a streaming response cannot be cloned for monitoring", async () => {
+  const response = new Response("hello", { status: 200 });
+  Object.defineProperty(response, "clone", {
+    value() {
+      throw new Error("clone unavailable");
+    },
+  });
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => response,
+  });
+
+  const returnedResponse = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
+
+  assert.equal(returnedResponse, response);
+  assert.deepEqual(
+    bridge.details().map((detail) => detail.phase),
+    ["started", "failed"]
+  );
 });
 
 test("emits failed instead of completed for HTTP error responses without bodies", async () => {

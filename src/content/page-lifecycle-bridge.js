@@ -13,9 +13,22 @@
     "/conversation",
   ]);
 
+  function getInputUrl(input) {
+    if (typeof input === "string") {
+      return input;
+    }
+    if (input instanceof URL) {
+      return input.href;
+    }
+    if (input && typeof input.url === "string") {
+      return input.url;
+    }
+    return "";
+  }
+
   function getNormalizedUrl(input) {
-    const url = typeof input === "string" ? input : input && input.url;
-    if (typeof url !== "string") {
+    const url = getInputUrl(input);
+    if (!url) {
       return "";
     }
 
@@ -79,8 +92,13 @@
         return response;
       }
 
-      if (!response.body || typeof ReadableStream === "undefined" || typeof response.clone !== "function") {
+      if (!response.body || typeof ReadableStream === "undefined") {
         postTerminalEvent("completed");
+        return response;
+      }
+
+      if (typeof response.clone !== "function") {
+        postTerminalEvent("failed");
         return response;
       }
 
@@ -109,7 +127,7 @@
           }
         })();
       } catch (_error) {
-        postTerminalEvent("completed");
+        postTerminalEvent("failed");
       }
 
       return response;

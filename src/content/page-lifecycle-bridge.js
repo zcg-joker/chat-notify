@@ -6,20 +6,37 @@
 
   const originalFetch = window.fetch;
   let sequence = 0;
+  const CHATGPT_HOSTS = new Set(["chatgpt.com", "chat.openai.com"]);
+  const GENERATION_URL_PATHS = new Set([
+    "/backend-api/conversation",
+    "/backend-api/f/conversation",
+    "/conversation",
+  ]);
 
-  function isObservableRequest(input) {
+  function getNormalizedUrl(input) {
     const url = typeof input === "string" ? input : input && input.url;
-    return typeof url === "string" && url.includes("/backend-api/") && url.includes("conversation");
+    if (typeof url !== "string") {
+      return "";
+    }
+
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (!CHATGPT_HOSTS.has(parsed.hostname) || !GENERATION_URL_PATHS.has(parsed.pathname)) {
+        return "";
+      }
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch (_error) {
+      return "";
+    }
   }
 
-  function getRequestMeta(input, init) {
-    const url = typeof input === "string" ? input : input && input.url;
+  function getRequestMeta(input, init, normalizedUrl) {
     const method =
       (init && init.method) ||
       (input && input.method) ||
       "GET";
     return {
-      url: String(url || ""),
+      url: normalizedUrl,
       method: String(method || "GET").toUpperCase(),
     };
   }
@@ -35,59 +52,70 @@
   }
 
   window.fetch = async function chatNotifyFetch(input, init) {
-    if (!isObservableRequest(input)) {
+    const normalizedUrl = getNormalizedUrl(input);
+    if (!normalizedUrl) {
       return originalFetch.apply(this, arguments);
     }
 
     const lifecycleId = `fetch:${Date.now()}:${++sequence}`;
-    const meta = getRequestMeta(input, init);
+    const meta = getRequestMeta(input, init, normalizedUrl);
+    let hasTerminalEvent = false;
+
+    function postTerminalEvent(phase) {
+      if (hasTerminalEvent) {
+        return;
+      }
+      hasTerminalEvent = true;
+      postLifecycleEvent(Object.assign({ lifecycleId, phase }, meta));
+    }
 
     postLifecycleEvent(Object.assign({ lifecycleId, phase: "started" }, meta));
 
     try {
       const response = await originalFetch.apply(this, arguments);
 
-      if (!response.body || typeof ReadableStream === "undefined") {
-        postLifecycleEvent(Object.assign({ lifecycleId, phase: "completed" }, meta));
+      if (!response.ok) {
+        postTerminalEvent("failed");
         return response;
       }
 
-      const reader = response.body.getReader();
-      const monitoredBody = new ReadableStream({
-        start(controller) {
-          function pump() {
-            reader.read().then(({ done, value }) => {
+      if (!response.body || typeof ReadableStream === "undefined" || typeof response.clone !== "function") {
+        postTerminalEvent("completed");
+        return response;
+      }
+
+      try {
+        const clone = response.clone();
+        const reader = clone.body && typeof clone.body.getReader === "function"
+          ? clone.body.getReader()
+          : null;
+
+        if (!reader) {
+          postTerminalEvent("completed");
+          return response;
+        }
+
+        (async () => {
+          try {
+            while (true) {
+              const { done } = await reader.read();
               if (done) {
-                postLifecycleEvent(Object.assign({ lifecycleId, phase: "completed" }, meta));
-                controller.close();
+                postTerminalEvent("completed");
                 return;
               }
-
-              controller.enqueue(value);
-              pump();
-            }).catch((error) => {
-              const phase = error && error.name === "AbortError" ? "canceled" : "failed";
-              postLifecycleEvent(Object.assign({ lifecycleId, phase }, meta));
-              controller.error(error);
-            });
+            }
+          } catch (error) {
+            postTerminalEvent(error && error.name === "AbortError" ? "canceled" : "failed");
           }
+        })();
+      } catch (_error) {
+        postTerminalEvent("completed");
+      }
 
-          pump();
-        },
-        cancel(reason) {
-          postLifecycleEvent(Object.assign({ lifecycleId, phase: "canceled" }, meta));
-          return reader.cancel(reason);
-        },
-      });
-
-      return new Response(monitoredBody, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
+      return response;
     } catch (error) {
       const phase = error && error.name === "AbortError" ? "canceled" : "failed";
-      postLifecycleEvent(Object.assign({ lifecycleId, phase }, meta));
+      postTerminalEvent(phase);
       throw error;
     }
   };

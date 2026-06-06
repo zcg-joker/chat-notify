@@ -482,6 +482,90 @@ test("completion notification is emitted once", () => {
   assert.equal(machine.transition({ type: "TICK" }).shouldNotify, true);
   assert.equal(machine.transition({ type: "TICK" }).shouldNotify, false);
 });
+
+test("explicit zero settle completes on immediate tick after generation complete", () => {
+  const machine = createResponseStateMachine({ now: () => 1000, settleMs: 0 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  machine.transition({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+  const result = machine.transition({ type: "TICK" });
+
+  assert.equal(result.state, RESPONSE_STATES.COMPLETED);
+  assert.equal(result.shouldNotify, true);
+});
+
+test("explicit zero response start timeout abandons on tick after send", () => {
+  let currentTime = 1000;
+  const machine = createResponseStateMachine({
+    now: () => currentTime,
+    responseStartTimeoutMs: 0,
+  });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  currentTime = 1001;
+  const result = machine.transition({ type: "TICK" });
+
+  assert.equal(result.state, RESPONSE_STATES.ERROR_OR_UNKNOWN);
+  assert.equal(result.shouldNotify, false);
+});
+
+test("total timeout from responding abandons without notification", () => {
+  let currentTime = 1000;
+  const machine = createResponseStateMachine({
+    now: () => currentTime,
+    totalTimeoutMs: 5,
+  });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  currentTime = 1006;
+  const result = machine.transition({ type: "TICK" });
+
+  assert.equal(result.state, RESPONSE_STATES.ERROR_OR_UNKNOWN);
+  assert.equal(result.shouldNotify, false);
+});
+
+test("generation failure from responding cancels without notification", () => {
+  const machine = createResponseStateMachine({ now: () => 1000 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  const result = machine.transition({ type: "GENERATION_FAILED", lifecycleId: "life-1" });
+
+  assert.equal(result.state, RESPONSE_STATES.CANCELED);
+  assert.equal(result.shouldNotify, false);
+});
+
+test("cancellation from settling does not notify", () => {
+  const machine = createResponseStateMachine({ now: () => 1000 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  machine.transition({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+  const result = machine.transition({ type: "GENERATION_CANCELED", lifecycleId: "life-1" });
+
+  assert.equal(result.state, RESPONSE_STATES.CANCELED);
+  assert.equal(result.shouldNotify, false);
+});
+
+test("new user send after completion resets machine for the new session", () => {
+  let currentTime = 1000;
+  const machine = createResponseStateMachine({ now: () => currentTime, settleMs: 10 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  machine.transition({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+  currentTime = 1011;
+  assert.equal(machine.transition({ type: "TICK" }).shouldNotify, true);
+
+  currentTime = 2000;
+  const result = machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:b" });
+
+  assert.equal(result.state, RESPONSE_STATES.PENDING_USER_MESSAGE);
+  assert.equal(result.sessionKey, "conversation:b");
+  assert.equal(result.shouldNotify, false);
+});
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -515,12 +599,21 @@ Create `src/core/state-machine.js`:
 })(globalThis, function buildStateMachine(constants) {
   const { RESPONSE_STATES, DEFAULTS } = constants;
 
+  function nonNegativeNumberOrDefault(value, fallback) {
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
   function createResponseStateMachine(options = {}) {
     const now = typeof options.now === "function" ? options.now : () => Date.now();
-    const responseStartTimeoutMs =
-      options.responseStartTimeoutMs || DEFAULTS.RESPONSE_START_TIMEOUT_MS;
-    const settleMs = options.settleMs || DEFAULTS.RESPONSE_SETTLE_MS;
-    const totalTimeoutMs = options.totalTimeoutMs || DEFAULTS.RESPONSE_TOTAL_TIMEOUT_MS;
+    const responseStartTimeoutMs = nonNegativeNumberOrDefault(
+      options.responseStartTimeoutMs,
+      DEFAULTS.RESPONSE_START_TIMEOUT_MS
+    );
+    const settleMs = nonNegativeNumberOrDefault(options.settleMs, DEFAULTS.RESPONSE_SETTLE_MS);
+    const totalTimeoutMs = nonNegativeNumberOrDefault(
+      options.totalTimeoutMs,
+      DEFAULTS.RESPONSE_TOTAL_TIMEOUT_MS
+    );
 
     const context = {
       state: RESPONSE_STATES.IDLE,
@@ -554,10 +647,6 @@ Create `src/core/state-machine.js`:
     function transition(event) {
       const timestamp = now();
 
-      if (context.notified) {
-        return snapshot();
-      }
-
       if (event.type === "USER_MESSAGE_SENT") {
         context.state = RESPONSE_STATES.PENDING_USER_MESSAGE;
         context.sessionKey = event.sessionKey;
@@ -567,6 +656,10 @@ Create `src/core/state-machine.js`:
         context.settleStartedAt = 0;
         context.latestSnapshot = "";
         context.notified = false;
+        return snapshot();
+      }
+
+      if (context.notified) {
         return snapshot();
       }
 

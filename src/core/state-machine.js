@@ -14,12 +14,21 @@
 })(globalThis, function buildStateMachine(constants) {
   const { RESPONSE_STATES, DEFAULTS } = constants;
 
+  function nonNegativeNumberOrDefault(value, fallback) {
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
   function createResponseStateMachine(options = {}) {
     const now = typeof options.now === "function" ? options.now : () => Date.now();
-    const responseStartTimeoutMs =
-      options.responseStartTimeoutMs || DEFAULTS.RESPONSE_START_TIMEOUT_MS;
-    const settleMs = options.settleMs || DEFAULTS.RESPONSE_SETTLE_MS;
-    const totalTimeoutMs = options.totalTimeoutMs || DEFAULTS.RESPONSE_TOTAL_TIMEOUT_MS;
+    const responseStartTimeoutMs = nonNegativeNumberOrDefault(
+      options.responseStartTimeoutMs,
+      DEFAULTS.RESPONSE_START_TIMEOUT_MS
+    );
+    const settleMs = nonNegativeNumberOrDefault(options.settleMs, DEFAULTS.RESPONSE_SETTLE_MS);
+    const totalTimeoutMs = nonNegativeNumberOrDefault(
+      options.totalTimeoutMs,
+      DEFAULTS.RESPONSE_TOTAL_TIMEOUT_MS
+    );
 
     const context = {
       state: RESPONSE_STATES.IDLE,
@@ -53,10 +62,6 @@
     function transition(event) {
       const timestamp = now();
 
-      if (context.notified) {
-        return snapshot();
-      }
-
       if (event.type === "USER_MESSAGE_SENT") {
         context.state = RESPONSE_STATES.PENDING_USER_MESSAGE;
         context.sessionKey = event.sessionKey;
@@ -66,6 +71,10 @@
         context.settleStartedAt = 0;
         context.latestSnapshot = "";
         context.notified = false;
+        return snapshot();
+      }
+
+      if (context.notified) {
         return snapshot();
       }
 

@@ -6,7 +6,7 @@ Date: 2026-06-06
 
 Chat Notify is an open-source browser extension that notifies users when an AI chat web page finishes responding. The first version supports ChatGPT only, while the architecture is designed for future adapters for Claude, Gemini, Perplexity, and other AI chat products.
 
-The first release should be small, auditable, privacy-conscious, and compatible with a future Chrome Web Store or Edge Add-ons release. It is not a general automation tool, chat archive, or prompt manager.
+The first release should be small, auditable, privacy-conscious, and compatible with a future Chrome Web Store or Edge Add-ons release. It is not a general automation tool, chat archive, prompt manager, or background ChatGPT client.
 
 ## MVP Scope
 
@@ -14,10 +14,10 @@ The MVP supports these behaviors:
 
 - Monitor `https://chatgpt.com/*` and `https://chat.openai.com/*`.
 - Start monitoring only after the user actively sends a new message.
-- Support multiple ChatGPT tabs at the same time. Each tab tracks its own in-memory pending response.
+- Support multiple active ChatGPT sessions at the same time, including multiple tabs and multiple conversations initiated within one tab when their generation lifecycle remains observable.
 - Notify when the corresponding ChatGPT response appears complete.
 - Include a short excerpt of the user's prompt in the notification.
-- Store the prompt excerpt only in the content script memory for that tab.
+- Store the prompt excerpt only in memory for the pending session record.
 - Clear the excerpt after the notification is sent or the monitoring attempt is abandoned.
 - Provide a lightweight popup with enabled status, supported-site status, a test notification button, and a brief privacy note.
 
@@ -36,7 +36,7 @@ The MVP intentionally excludes:
 
 The extension name is `Chat Notify`, not `ChatGPT Notify`, so the product language can grow beyond ChatGPT later.
 
-When a user sends a message in a ChatGPT tab, that tab begins monitoring the current response. The user can switch away or open other tabs. When the response completes, the browser displays a system notification.
+When a user sends a message in a ChatGPT conversation, the extension begins monitoring that session's current response. The user can switch away, open another tab, or move to another conversation in the same tab. When an observable response completes, the browser displays a system notification for the corresponding session.
 
 Notification example when an excerpt exists:
 
@@ -61,41 +61,71 @@ The popup should stay minimal in the MVP:
 
 ## Monitoring Model
 
-Each supported chat page runs a content script. The content script selects a site adapter, starts a monitor controller, and tracks state for that tab only.
+Each supported chat page runs a content script. The content script selects a site adapter, starts a monitor controller, and tracks pending responses by session key instead of by tab.
 
-The content script does not create system notifications directly. It sends a completion event to the background service worker. The background service worker creates the browser notification.
+The content script does not create system notifications directly. It sends completion, cancellation, and abandonment events to the background service worker. The background service worker creates browser notifications only for completion events.
 
-The first version uses this state machine:
+The first version uses this state machine for each pending session:
 
 - `idle`: no active monitoring attempt.
 - `pending_user_message`: the user appears to have sent a prompt; a short excerpt has been captured.
 - `responding`: the page appears to be generating an assistant response.
 - `settling`: generation appears to have stopped; the monitor waits for a short stability window.
 - `completed`: the response is confirmed complete; a notification event is sent.
+- `canceled`: the generation lifecycle ended because the site canceled or aborted the response; no completion notification is sent.
 - `error_or_unknown`: the page cannot be interpreted reliably; the monitor abandons this attempt.
 
 Expected transition flow:
 
 1. The user clicks the send button or presses Enter in a way that sends a ChatGPT prompt.
 2. The ChatGPT adapter extracts a prompt excerpt from the draft input or from the latest user message.
-3. The monitor enters `pending_user_message`.
-4. If ChatGPT enters a generating state, the monitor enters `responding`.
-5. When the generating indicator disappears and the latest assistant content is stable for about 1.5 to 2 seconds, the monitor enters `settling` and then `completed`.
-6. The content script sends an `AI_RESPONSE_COMPLETED` message to the background service worker.
-7. The background service worker creates a notification.
-8. The content script clears the prompt excerpt and returns to `idle`.
+3. The session tracker assigns a `sessionKey` from the current ChatGPT conversation URL or a temporary key for a new conversation.
+4. The monitor creates or updates a pending record for that session and enters `pending_user_message`.
+5. If ChatGPT enters a generating state for that session, the monitor enters `responding`.
+6. When the generation lifecycle ends successfully and the latest assistant content is stable for about 1.5 to 2 seconds when visible, the monitor enters `settling` and then `completed`.
+7. The content script sends an `AI_RESPONSE_COMPLETED` message to the background service worker.
+8. The background service worker creates a notification.
+9. The content script clears the prompt excerpt and removes the pending session record.
 
 If the page does not enter a generating state within a short timeout, or if the adapter cannot identify the page state reliably, the monitor returns to `idle` without notifying.
 
-## Multi-Tab Behavior
+If the site aborts the generation because the user switches conversations, stops generation, reloads, or closes the tab, the monitor marks that session `canceled` or abandoned and does not send a completion notification.
 
-Multi-tab support is required in the MVP.
+## Multi-Session Behavior
 
-Each ChatGPT tab has its own content script and in-memory state machine. This means two or more ChatGPT tabs can be monitored independently. When a tab completes, it reports only its own completion event.
+Multi-session support is required in the MVP.
 
-The background service worker should treat completion events as independent events. Notification IDs should include the tab ID and a timestamp or nonce so notifications from different tabs do not overwrite each other.
+The concurrency unit is a ChatGPT session or conversation, not a browser tab. A session can be active in its own tab, or it can be one of several conversations the user starts from the same tab over time.
 
-Opening a historical conversation, refreshing a page, or switching conversations must not create a notification unless a user-send event was detected first.
+The monitor keeps a `pendingSessions` map:
+
+```text
+Map<sessionKey, PendingResponse>
+```
+
+Each `PendingResponse` stores:
+
+- `siteId`
+- `sessionKey`
+- `sourceTabId`
+- `promptExcerpt`
+- `status`
+- `startedAt`
+- `lastSeenAt`
+- latest visible assistant snapshot, when available
+
+The `sessionKey` should come from the ChatGPT conversation URL when possible. For a new conversation before ChatGPT assigns a conversation ID, the monitor may use a temporary key and migrate the pending record when a stable conversation ID appears.
+
+The background service worker should treat completion events as independent events. Notification IDs should include the site ID, session key, source tab ID, and a timestamp or nonce so notifications from different sessions do not overwrite each other.
+
+Opening a historical conversation, refreshing a page, or switching conversations must not create a notification unless a user-send event was detected first for that session.
+
+DOM-only monitoring is not sufficient for same-tab multi-session behavior because the previous conversation's DOM may disappear when the user navigates to another conversation. The MVP therefore uses two layers:
+
+- DOM layer: captures user-send events, prompt excerpts, current conversation identity, and visible assistant snapshots.
+- Generation lifecycle layer: observes the underlying response lifecycle for each session when the site exposes enough information in the active page runtime.
+
+If ChatGPT keeps the previous session's generation running while the user navigates to another conversation in the same tab, the lifecycle layer should still be able to complete that session. If ChatGPT cancels the previous generation during navigation, the extension must treat it as canceled or abandoned rather than completed.
 
 ## Architecture
 
@@ -116,11 +146,13 @@ chatNotify/
       service-worker.js
     content/
       content-script.js
+      page-lifecycle-bridge.js
     adapters/
       adapter-contract.js
       chatgpt-adapter.js
     core/
       monitor-controller.js
+      session-tracker.js
       state-machine.js
       prompt-excerpt.js
       dom-watch.js
@@ -144,7 +176,7 @@ Responsibilities:
 
 - Handle `AI_RESPONSE_COMPLETED`.
 - Handle popup test notification requests.
-- Create notification IDs that do not collide across tabs.
+- Create notification IDs that do not collide across sessions or tabs.
 - Avoid storing prompt excerpts or chat content.
 
 Future responsibility:
@@ -160,8 +192,23 @@ Responsibilities:
 - Select a matching adapter for the current page.
 - Read the enabled setting from `chrome.storage`.
 - Start or stop the monitor controller.
+- Install the page lifecycle bridge when the adapter requires page-runtime signals.
 - Relay completion events to the background service worker.
 - Avoid site-specific logic outside adapters.
+
+### Page Lifecycle Bridge
+
+`src/content/page-lifecycle-bridge.js` observes response lifecycle signals that are not available through ordinary DOM mutation alone.
+
+Responsibilities:
+
+- Run in the page context when needed so it can observe ChatGPT's request lifecycle.
+- Detect generation start, successful completion, cancellation, and failure when those events can be inferred.
+- Forward sanitized lifecycle events to the isolated content script.
+- Avoid forwarding full prompt text, assistant text, request bodies, response bodies, auth tokens, or headers.
+- Keep the bridge narrow and site-specific enough to audit.
+
+This bridge is required because same-tab session switching can remove the previous conversation from the DOM while its generation may still be running. If Chrome extension platform constraints or ChatGPT implementation changes prevent reliable lifecycle observation, the monitor should fail closed and avoid sending a completion notification.
 
 ### Adapter Contract
 
@@ -172,12 +219,15 @@ Each adapter should provide:
 - `siteId`
 - `displayName`
 - `matchesLocation(location)`
+- `getSessionKey(location, root)`
+- `canObserveLifecycle`
 - `isSendEvent(event)`
 - `getPromptDraft(root)`
 - `getLatestUserMessage(root)`
 - `isResponding(root)`
 - `getLatestAssistantSnapshot(root)`
 - `observePage(root, callback)`
+- `normalizeLifecycleEvent(event)`
 
 The contract exists so future Claude, Gemini, and Perplexity support can be added by implementing new adapters instead of rewriting the monitor.
 
@@ -189,9 +239,11 @@ Responsibilities:
 
 - Recognize ChatGPT send actions.
 - Extract the current user prompt or latest user message.
+- Resolve the current conversation ID from URL or page state.
 - Detect whether ChatGPT is generating.
 - Snapshot the latest assistant response text.
 - Observe relevant page mutations.
+- Normalize ChatGPT response lifecycle events into session-scoped monitor events.
 
 This file is expected to be the most likely to change when ChatGPT changes its UI.
 
@@ -203,10 +255,24 @@ Responsibilities:
 
 - Listen for user-send events.
 - Capture prompt excerpts.
+- Create and update pending session records.
 - Poll or react to adapter page observations.
+- Consume page lifecycle bridge events.
 - Feed abstract events into the state machine.
 - Emit a completion event once per user-sent prompt.
 - Clean up timers and observers.
+
+### Session Tracker
+
+`src/core/session-tracker.js` manages pending response records by session key.
+
+Responsibilities:
+
+- Create temporary session keys for new conversations.
+- Migrate temporary keys to stable conversation IDs when available.
+- Keep pending sessions independent from browser tabs.
+- Track the source tab for notification focus behavior and diagnostics.
+- Clear prompt excerpts when a pending session completes, cancels, times out, or is abandoned.
 
 ### State Machine
 
@@ -217,6 +283,7 @@ Responsibilities:
 - Define valid states and transitions.
 - Enforce timeouts.
 - Prevent duplicate completion events.
+- Distinguish completed responses from canceled or abandoned responses.
 - Prefer dropping uncertain attempts over notifying incorrectly.
 
 ### Prompt Excerpt
@@ -256,7 +323,7 @@ Privacy requirements:
 - No network requests to project-owned or third-party servers.
 - No upload or sync of chat content.
 - No persistent storage of prompt excerpts.
-- Prompt excerpts live only in a tab's content script memory.
+- Prompt excerpts live only in the in-memory pending session record.
 - Prompt excerpts are cleared after completion, timeout, or monitor abandonment.
 - README and popup copy must state these constraints plainly.
 
@@ -286,6 +353,7 @@ Automated tests should cover pure logic first.
 - `pending_user_message -> responding`
 - `responding -> settling`
 - `settling -> completed`
+- cancellation from any active state without notification
 - timeout from `pending_user_message` back to `idle`
 - timeout from `responding` back to `idle`
 - duplicate completion prevention
@@ -305,6 +373,8 @@ Manual validation should cover:
 - Load the unpacked extension in Chrome.
 - Send a short ChatGPT prompt and confirm one notification after completion.
 - Open two ChatGPT tabs, send prompts in both, and confirm two independent notifications.
+- In one ChatGPT tab, send a prompt in Conversation A, switch to Conversation B, send another prompt, and confirm both observable completions notify independently.
+- In one ChatGPT tab, send a prompt in Conversation A, switch to Conversation B, and confirm no completion notification appears for A if ChatGPT canceled A's generation.
 - Open an existing historical conversation and confirm no notification appears.
 - Refresh a ChatGPT page and confirm no notification appears.
 - Switch away from the ChatGPT tab during generation and confirm notification still appears.
@@ -313,13 +383,15 @@ Manual validation should cover:
 
 ## Known Risks
 
-ChatGPT DOM changes can break monitoring. This risk is contained by keeping selectors and page-specific behavior inside `chatgpt-adapter.js`.
+ChatGPT DOM changes can break visible-page monitoring. This risk is contained by keeping selectors and page-specific behavior inside `chatgpt-adapter.js`.
+
+ChatGPT request lifecycle changes can break same-tab multi-session monitoring. This risk is contained by keeping request lifecycle normalization narrow and adapter-owned. The extension should fail closed if lifecycle events cannot be tied to a session.
 
 False notifications can happen if page changes are mistaken for new replies. This is reduced by requiring a user-send event before monitoring can begin.
 
 Missed notifications can happen if ChatGPT changes its generating indicators. This is reduced by combining multiple signals: send event, generating state, assistant snapshot changes, and a settling window.
 
-Prompt excerpts in notifications can expose sensitive text on the local machine. This is accepted for the MVP because the user requested useful multi-tab identification. The privacy boundary is local memory only, no storage, and no upload. A future setting can disable excerpts.
+Prompt excerpts in notifications can expose sensitive text on the local machine. This is accepted for the MVP because the user requested useful session identification. The privacy boundary is local memory only, no storage, and no upload. A future setting can disable excerpts.
 
 Chrome and Edge Chromium are the initial target browsers. Firefox compatibility is deferred.
 
@@ -345,7 +417,7 @@ The design is successful when the MVP can:
 - Run as a local unpacked Manifest V3 extension.
 - Monitor ChatGPT only.
 - Notify only after user-sent prompts.
-- Monitor multiple ChatGPT tabs independently.
+- Monitor multiple ChatGPT sessions independently, including multiple tabs and same-tab conversation switches when the generation lifecycle remains observable.
 - Include a short prompt excerpt in notifications.
 - Avoid storing or uploading chat content.
 - Keep site-specific DOM logic isolated in the ChatGPT adapter.

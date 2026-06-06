@@ -349,7 +349,7 @@ Create `src/core/prompt-excerpt.js`:
 
   function createPromptExcerpt(value, limit = defaultLimit) {
     const normalized = normalizePromptText(value);
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : defaultLimit;
+    const safeLimit = Number.isFinite(limit) && limit >= 0 ? Math.floor(limit) : defaultLimit;
     const characters = Array.from(normalized);
 
     if (characters.length === 0) {

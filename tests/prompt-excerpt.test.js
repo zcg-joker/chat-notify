@@ -23,6 +23,10 @@ test("truncates long mixed text to visible character limit", () => {
   );
 });
 
+test("allows zero visible characters before ellipsis", () => {
+  assert.equal(createPromptExcerpt("abcdef", 0), "...");
+});
+
 test("does not append ellipsis when text exactly matches the limit", () => {
   assert.equal(createPromptExcerpt("abcdef", 6), "abcdef");
 });

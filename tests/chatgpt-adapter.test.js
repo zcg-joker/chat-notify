@@ -10,6 +10,14 @@ test("matches ChatGPT hosts", () => {
   assert.equal(adapter.matchesLocation(new URL("https://claude.ai/chat/abc")), false);
 });
 
+test("exposes ChatGPT adapter metadata", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(adapter.siteId, "chatgpt");
+  assert.equal(adapter.displayName, "ChatGPT");
+  assert.equal(adapter.canObserveLifecycle, true);
+});
+
 test("extracts stable session key from conversation URL", () => {
   const adapter = createChatGptAdapter();
 
@@ -42,4 +50,22 @@ test("normalizes lifecycle events without forwarding body data", () => {
     url: "https://chatgpt.com/backend-api/conversation",
     method: "POST",
   });
+});
+
+test("ignores lifecycle events for non-generation URLs", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(
+    adapter.normalizeLifecycleEvent({
+      phase: "completed",
+      url: "https://chatgpt.com/some-other-route",
+    }),
+    null
+  );
+});
+
+test("ignores empty lifecycle events", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(adapter.normalizeLifecycleEvent(null), null);
 });

@@ -32,6 +32,11 @@
     canceled: "GENERATION_CANCELED",
     failed: "GENERATION_FAILED",
   });
+  const GENERATION_URL_PATHS = new Set([
+    "/backend-api/conversation",
+    "/backend-api/f/conversation",
+    "/conversation",
+  ]);
 
   function defaultTempKeySeed() {
     return `${Date.now()}:${Math.random().toString(36).slice(2)}`;
@@ -73,6 +78,14 @@
     const label = `${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`.trim();
     const normalized = label.toLowerCase();
     return STOP_WORDS.some((word) => normalized.includes(word));
+  }
+
+  function isGenerationUrl(url) {
+    try {
+      return GENERATION_URL_PATHS.has(new URL(url).pathname);
+    } catch (_error) {
+      return false;
+    }
   }
 
   function createChatGptAdapter(options = {}) {
@@ -135,7 +148,7 @@
     }
 
     function normalizeLifecycleEvent(event) {
-      if (!event || !PHASE_EVENT_TYPES[event.phase]) {
+      if (!event || !PHASE_EVENT_TYPES[event.phase] || !isGenerationUrl(event.url)) {
         return null;
       }
       return {
@@ -147,6 +160,9 @@
     }
 
     return {
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      canObserveLifecycle: true,
       matchesLocation,
       getSessionKey,
       isSendEvent,

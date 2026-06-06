@@ -141,7 +141,6 @@
     function updateTrackerFromResult(sessionKey, lifecycleEvent, result) {
       const patch = {
         status: result.state,
-        latestAssistantSnapshot: result.latestSnapshot,
       };
 
       if (lifecycleEvent.lifecycleId) {
@@ -209,7 +208,6 @@
 
         tracker.update(record.sessionKey, {
           status: result.state,
-          latestAssistantSnapshot: result.latestSnapshot,
         });
         completeIfNeeded(record.sessionKey, result);
       }

@@ -43,6 +43,19 @@ test("moves responding to completed after lifecycle complete and settle elapsed"
   assert.equal(completed.shouldNotify, true);
 });
 
+test("assistant snapshot changes do not retain assistant text", () => {
+  const machine = createResponseStateMachine({ now: () => 1000 });
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+
+  const result = machine.transition({
+    type: "ASSISTANT_SNAPSHOT_CHANGED",
+    snapshot: "sensitive assistant answer that should not be retained",
+  });
+
+  assert.equal(result.latestSnapshot, "");
+});
+
 test("cancellation from responding never notifies", () => {
   const machine = createResponseStateMachine({ now: () => 1000 });
   machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });

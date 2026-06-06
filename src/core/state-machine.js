@@ -69,7 +69,6 @@
         context.startedAt = timestamp;
         context.lastChangedAt = timestamp;
         context.settleStartedAt = 0;
-        context.latestSnapshot = "";
         context.notified = false;
         return snapshot();
       }
@@ -110,7 +109,6 @@
 
       if (context.state === RESPONSE_STATES.RESPONDING) {
         if (event.type === "ASSISTANT_SNAPSHOT_CHANGED") {
-          context.latestSnapshot = event.snapshot || "";
           context.lastChangedAt = timestamp;
           return snapshot();
         }
@@ -124,7 +122,6 @@
 
       if (context.state === RESPONSE_STATES.SETTLING) {
         if (event.type === "ASSISTANT_SNAPSHOT_CHANGED") {
-          context.latestSnapshot = event.snapshot || "";
           context.settleStartedAt = timestamp;
           return snapshot();
         }

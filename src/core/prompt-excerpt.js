@@ -31,7 +31,7 @@
       return normalized;
     }
 
-    return `${characters.slice(0, safeLimit - 1).join("")}...`;
+    return `${characters.slice(0, safeLimit).join("")}...`;
   }
 
   return {

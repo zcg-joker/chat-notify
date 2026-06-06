@@ -303,7 +303,7 @@ test("keeps short Chinese text", () => {
 test("truncates long mixed text to visible character limit", () => {
   assert.equal(
     createPromptExcerpt("请帮我总结这篇论文并提取关键观点，然后给出三个行动建议", 12),
-    "请帮我总结这篇论文并提..."
+    "请帮我总结这篇论文并提取..."
   );
 });
 

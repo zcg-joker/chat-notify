@@ -14,7 +14,8 @@ The MVP supports these behaviors:
 
 - Monitor `https://chatgpt.com/*` and `https://chat.openai.com/*`.
 - Start monitoring only after the user actively sends a new message.
-- Support multiple active ChatGPT sessions at the same time, including multiple tabs and multiple conversations initiated within one tab when their generation lifecycle remains observable.
+- Support multiple active ChatGPT sessions at the same time.
+- Support multi-tab monitoring and same-tab multi-conversation monitoring. These are complementary requirements, not alternatives.
 - Notify when the corresponding ChatGPT response appears complete.
 - Include a short excerpt of the user's prompt in the notification.
 - Store the prompt excerpt only in memory for the pending session record.
@@ -93,9 +94,9 @@ If the site aborts the generation because the user switches conversations, stops
 
 ## Multi-Session Behavior
 
-Multi-session support is required in the MVP.
+Multi-session support is required in the MVP, and multi-tab support remains required. The session-scoped model expands the original tab-scoped model; it does not replace multi-tab behavior.
 
-The concurrency unit is a ChatGPT session or conversation, not a browser tab. A session can be active in its own tab, or it can be one of several conversations the user starts from the same tab over time.
+The business concurrency unit is a ChatGPT session or conversation. The browser tab is still tracked as the source context for page observation, notification routing, and future click-to-focus behavior. A session can be active in its own tab, or it can be one of several conversations the user starts from the same tab over time.
 
 The monitor keeps a `pendingSessions` map:
 

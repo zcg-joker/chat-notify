@@ -1364,6 +1364,38 @@ Create `tests/chatgpt-adapter.test.js`:
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createChatGptAdapter } = require("../src/adapters/chatgpt-adapter.js");
+const { validateAdapter, REQUIRED_ADAPTER_METHODS } = require("../src/adapters/adapter-contract.js");
+
+function createButton({ ariaLabel = "", textContent = "", testId = "" } = {}) {
+  return {
+    textContent,
+    getAttribute(name) {
+      if (name === "aria-label") {
+        return ariaLabel;
+      }
+      if (name === "data-testid") {
+        return testId;
+      }
+      return "";
+    },
+  };
+}
+
+function createClickTarget(button) {
+  return {
+    closest(selector) {
+      return selector === "button" ? button : null;
+    },
+  };
+}
+
+function createRootWithButtons(buttons) {
+  return {
+    querySelectorAll(selector) {
+      return selector === "button" ? buttons : [];
+    },
+  };
+}
 
 test("matches ChatGPT hosts", () => {
   const adapter = createChatGptAdapter();
@@ -1388,6 +1420,61 @@ test("uses temporary session key for new chat URL", () => {
   assert.equal(adapter.getSessionKey(new URL("https://chatgpt.com/"), null), "temp:chatgpt:seed-1");
 });
 
+test("reuses temporary session key for new chat URL within adapter instance", () => {
+  let seedCalls = 0;
+  const adapter = createChatGptAdapter({
+    tempKeySeed: () => {
+      seedCalls += 1;
+      return `seed-${seedCalls}`;
+    },
+  });
+
+  const first = adapter.getSessionKey(new URL("https://chatgpt.com/"), null);
+  const second = adapter.getSessionKey(new URL("https://chatgpt.com/"), null);
+
+  assert.equal(first, "temp:chatgpt:seed-1");
+  assert.equal(second, first);
+  assert.equal(seedCalls, 1);
+});
+
+test("satisfies adapter contract validation", () => {
+  assert.equal(validateAdapter(createChatGptAdapter()), true);
+});
+
+test("rejects adapters missing metadata", () => {
+  const methodsOnlyAdapter = Object.fromEntries(
+    REQUIRED_ADAPTER_METHODS.map((method) => [method, () => null])
+  );
+
+  assert.equal(validateAdapter(methodsOnlyAdapter), false);
+});
+
+test("recognizes localized send button labels", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(
+    adapter.isSendEvent({
+      type: "click",
+      target: createClickTarget(createButton({ ariaLabel: "发送消息" })),
+    }),
+    true
+  );
+  assert.equal(
+    adapter.isSendEvent({
+      type: "click",
+      target: createClickTarget(createButton({ textContent: "发送" })),
+    }),
+    true
+  );
+});
+
+test("recognizes localized responding controls", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(adapter.isResponding(createRootWithButtons([createButton({ ariaLabel: "停止生成" })])), true);
+  assert.equal(adapter.isResponding(createRootWithButtons([createButton({ textContent: "取消" })])), true);
+});
+
 test("normalizes lifecycle events without forwarding body data", () => {
   const adapter = createChatGptAdapter();
   const event = adapter.normalizeLifecycleEvent({
@@ -1395,6 +1482,9 @@ test("normalizes lifecycle events without forwarding body data", () => {
     phase: "completed",
     url: "https://chatgpt.com/backend-api/conversation",
     method: "POST",
+    headers: { authorization: "Bearer sensitive" },
+    authorization: "Bearer sensitive",
+    token: "sensitive",
     body: "sensitive",
     responseText: "sensitive",
   });
@@ -1405,6 +1495,23 @@ test("normalizes lifecycle events without forwarding body data", () => {
     url: "https://chatgpt.com/backend-api/conversation",
     method: "POST",
   });
+  assert.equal(Object.hasOwn(event, "headers"), false);
+  assert.equal(Object.hasOwn(event, "authorization"), false);
+  assert.equal(Object.hasOwn(event, "token"), false);
+  assert.equal(Object.hasOwn(event, "body"), false);
+  assert.equal(Object.hasOwn(event, "responseText"), false);
+});
+
+test("ignores generation paths on non-ChatGPT hosts", () => {
+  const adapter = createChatGptAdapter();
+
+  assert.equal(
+    adapter.normalizeLifecycleEvent({
+      phase: "completed",
+      url: "https://example.com/backend-api/conversation",
+    }),
+    null
+  );
 });
 ```
 
@@ -1468,16 +1575,28 @@ Create `src/adapters/adapter-contract.js`:
     "observePage",
     "normalizeLifecycleEvent",
   ]);
+  const REQUIRED_ADAPTER_METADATA = Object.freeze({
+    siteId: "string",
+    displayName: "string",
+    canObserveLifecycle: "boolean",
+  });
 
   function validateAdapter(adapter) {
     if (!adapter || typeof adapter !== "object") {
       return false;
     }
-    return REQUIRED_ADAPTER_METHODS.every((method) => typeof adapter[method] === "function");
+    const hasMethods = REQUIRED_ADAPTER_METHODS.every(
+      (method) => typeof adapter[method] === "function"
+    );
+    const hasMetadata = Object.entries(REQUIRED_ADAPTER_METADATA).every(
+      ([field, type]) => typeof adapter[field] === type
+    );
+    return hasMethods && hasMetadata;
   }
 
   return {
     REQUIRED_ADAPTER_METHODS,
+    REQUIRED_ADAPTER_METADATA,
     validateAdapter,
   };
 });
@@ -1501,17 +1620,20 @@ Create `src/adapters/chatgpt-adapter.js`:
   }
 })(globalThis, function buildChatGptAdapter(domWatch) {
   const CHATGPT_HOSTS = new Set(["chatgpt.com", "chat.openai.com"]);
-  const GENERATION_URL_HINTS = [
+  const GENERATION_URL_PATHS = new Set([
     "/backend-api/conversation",
     "/backend-api/f/conversation",
     "/conversation",
-  ];
+  ]);
+  const SEND_LABEL_PATTERN = /send|发送/i;
+  const STOP_LABEL_PATTERN = /stop|cancel|停止|取消/i;
 
   function createChatGptAdapter(options = {}) {
     const tempKeySeed =
       typeof options.tempKeySeed === "function"
         ? options.tempKeySeed
         : () => `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    let temporarySessionKey = "";
 
     function matchesLocation(location) {
       return CHATGPT_HOSTS.has(location.hostname);
@@ -1522,7 +1644,10 @@ Create `src/adapters/chatgpt-adapter.js`:
       if (match && match[1]) {
         return `conversation:${decodeURIComponent(match[1])}`;
       }
-      return `temp:chatgpt:${tempKeySeed()}`;
+      if (!temporarySessionKey) {
+        temporarySessionKey = `temp:chatgpt:${tempKeySeed()}`;
+      }
+      return temporarySessionKey;
     }
 
     function isSendEvent(event) {
@@ -1534,7 +1659,8 @@ Create `src/adapters/chatgpt-adapter.js`:
       if (event.type === "click") {
         const button = target.closest && target.closest("button");
         const label = button && `${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`;
-        return Boolean(button && /send|发送/i.test(label));
+        const testId = button && button.getAttribute("data-testid");
+        return Boolean(button && (SEND_LABEL_PATTERN.test(label) || /send/i.test(testId || "")));
       }
 
       if (event.type === "keydown") {
@@ -1563,7 +1689,7 @@ Create `src/adapters/chatgpt-adapter.js`:
     function isResponding(root) {
       const buttons = Array.from(root.querySelectorAll("button"));
       return buttons.some((button) =>
-        /stop|停止|cancel|取消/i.test(`${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`)
+        STOP_LABEL_PATTERN.test(`${button.getAttribute("aria-label") || ""} ${button.textContent || ""}`)
       );
     }
 
@@ -1580,7 +1706,12 @@ Create `src/adapters/chatgpt-adapter.js`:
     }
 
     function looksLikeGenerationUrl(url) {
-      return GENERATION_URL_HINTS.some((hint) => String(url || "").includes(hint));
+      try {
+        const parsed = new URL(url);
+        return CHATGPT_HOSTS.has(parsed.hostname) && GENERATION_URL_PATHS.has(parsed.pathname);
+      } catch (_error) {
+        return false;
+      }
     }
 
     function normalizeLifecycleEvent(event) {

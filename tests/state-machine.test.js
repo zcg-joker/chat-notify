@@ -124,6 +124,19 @@ test("total timeout from responding abandons without notification", () => {
   assert.equal(result.shouldNotify, false);
 });
 
+test("explicit zero total timeout is honored", () => {
+  let currentTime = 1000;
+  const machine = createResponseStateMachine({ now: () => currentTime, totalTimeoutMs: 0 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  currentTime = 1001;
+  const result = machine.transition({ type: "TICK" });
+
+  assert.equal(result.state, RESPONSE_STATES.ERROR_OR_UNKNOWN);
+  assert.equal(result.shouldNotify, false);
+});
+
 test("generation failure from responding cancels without notification", () => {
   const machine = createResponseStateMachine({ now: () => 1000 });
 

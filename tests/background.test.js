@@ -1,6 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createResponseCompletedMessage } = require("../src/shared/messages.js");
+const {
+  createResponseCompletedMessage,
+  createTestNotificationMessage,
+} = require("../src/shared/messages.js");
 const { createNotificationService } = require("../src/background/service-worker.js");
 
 test("creates completion notification with prompt excerpt", async () => {
@@ -61,6 +64,28 @@ test("uses fallback notification message when excerpt is empty", async () => {
   );
 
   assert.equal(created[0].options.message, "Your response is ready");
+});
+
+test("creates test notification", async () => {
+  const created = [];
+  const service = createNotificationService({
+    chromeApi: {
+      notifications: {
+        create(id, options, callback) {
+          created.push({ id, options });
+          callback("notification-id");
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(createTestNotificationMessage());
+
+  assert.equal(result.ok, true);
+  assert.match(result.notificationId, /^chat-notify:test:/);
+  assert.equal(created[0].options.title, "Chat Notify test");
+  assert.equal(created[0].options.message, "Notifications are working");
 });
 
 test("ignores non-completion messages", async () => {

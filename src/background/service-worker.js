@@ -58,6 +58,21 @@
     }
 
     async function handleMessage(message, sender = {}) {
+      if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
+        const id = `chat-notify:test:${now()}`;
+        const notificationResult = await notify(id, {
+          type: "basic",
+          iconUrl: "assets/icon.svg",
+          title: "Chat Notify test",
+          message: "Notifications are working",
+          priority: 1,
+        });
+        if (!notificationResult.ok) {
+          return { ok: false, error: notificationResult.error, notificationId: id };
+        }
+        return { ok: true, notificationId: id };
+      }
+
       if (!message || message.type !== MESSAGE_TYPES.AI_RESPONSE_COMPLETED) {
         return { ok: false, ignored: true };
       }

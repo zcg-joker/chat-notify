@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chat Notify</title>
+    <link rel="stylesheet" href="./popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="header">
+        <img src="../../assets/icon.svg" alt="" class="icon">
+        <div>
+          <h1>Chat Notify</h1>
+          <p id="site-status">Checking page...</p>
+        </div>
+      </header>
+
+      <label class="toggle-row">
+        <span>Enabled</span>
+        <input id="enabled-toggle" type="checkbox">
+      </label>
+
+      <button id="test-notification" type="button">Test notification</button>
+
+      <p class="privacy">
+        Prompt excerpts stay in local memory for the active response and are cleared after notification.
+      </p>
+    </main>
+    <script src="../shared/messages.js"></script>
+    <script src="./popup.js"></script>
+  </body>
+</html>

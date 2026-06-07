@@ -39,6 +39,7 @@
   let observersInstalled = false;
   let flowCounter = 0;
   let currentPendingFlowId = "";
+  let probeDiagnosticsActive = false;
   const flowIdByLifecycleId = new Map();
   const flowIdBySessionKey = new Map();
 
@@ -160,6 +161,7 @@
         log("info", "completion message acknowledged", response);
       }
     );
+    probeDiagnosticsActive = false;
   }
 
   function installLifecycleBridge() {
@@ -207,6 +209,7 @@
           : "",
     });
     currentPendingFlowId = createFlowId();
+    probeDiagnosticsActive = true;
     sendDiagnosticEvent({ eventType: "send_captured", flowId: currentPendingFlowId });
     controller.handleUserSend();
   }
@@ -234,6 +237,9 @@
         matched: Boolean(data.detail.matched),
         reason: data.detail.reason || "",
       };
+      if (!request.matched && !probeDiagnosticsActive) {
+        return;
+      }
       const message = [
         request.requestKind,
         request.method,
@@ -261,6 +267,13 @@
         bindLifecycleFlow(normalized, flowId);
       } else {
         bindSessionFlow(normalized.sessionKey, flowId);
+      }
+      if (
+        normalized.type === "GENERATION_COMPLETED" ||
+        normalized.type === "GENERATION_FAILED" ||
+        normalized.type === "GENERATION_CANCELED"
+      ) {
+        probeDiagnosticsActive = false;
       }
       if (diagnosticEventType) {
         sendDiagnosticEvent({

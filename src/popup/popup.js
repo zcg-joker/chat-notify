@@ -94,7 +94,10 @@
       return;
     }
 
-    activitySummary.textContent = activityLabel(events[events.length - 1]).replace(/\s+\(.+\)$/, "");
+    const summaryEvent =
+      Array.from(events).reverse().find((event) => event && event.eventType !== "request_probe_ignored") ||
+      events[events.length - 1];
+    activitySummary.textContent = activityLabel(summaryEvent).replace(/\s+\(.+\)$/, "");
     activitySite.textContent = flow.displayName || flow.siteId || "";
     activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";
     activityTimeline.textContent = labels.join(" -> ");

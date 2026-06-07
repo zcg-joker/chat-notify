@@ -306,6 +306,42 @@ test("popup renders request probe diagnostics", () => {
   );
 });
 
+test("popup summary ignores trailing ignored request probes", () => {
+  const popup = runPopup({
+    tabUrl: "https://chatgpt.com/c/test",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "sent", siteId: "chatgpt", updatedAt: 1780761600000 },
+        diagnostics: {
+          latestFlow: {
+            siteId: "chatgpt",
+            displayName: "ChatGPT",
+            events: [
+              { eventType: "lifecycle_completed" },
+              { eventType: "notification_sent" },
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/backend-api/sentinel/ping",
+                  matched: false,
+                  reason: "path_not_matched",
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Notification sent");
+});
+
 test("popup renders unknown diagnostics event types with a neutral label", () => {
   const popup = runPopup({
     statusResponse: {

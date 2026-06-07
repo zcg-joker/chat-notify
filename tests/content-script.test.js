@@ -443,6 +443,37 @@ test("forwards request probe events as diagnostics without touching lifecycle st
   assert.equal(JSON.stringify(diagnostics).includes("token=secret"), false);
 });
 
+test("does not let ignored probes after notification overwrite the active flow", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.getControllerOptions().onCompleted({
+    siteId: "chatgpt",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Prompt",
+  });
+  const messagesBeforeProbe = context.sentMessages.length;
+
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        eventType: "request_probe",
+        siteId: "chatgpt",
+        requestKind: "fetch",
+        method: "POST",
+        host: "chatgpt.com",
+        path: "/backend-api/sentinel/ping",
+        matched: false,
+        reason: "path_not_matched",
+      },
+    },
+  });
+
+  assert.equal(context.sentMessages.length, messagesBeforeProbe);
+});
+
 test("can notify from a lifecycle message without waiting for interval tick", () => {
   const context = createContentScriptContext();
   context.completionEventsByLifecycleType.set("GENERATION_COMPLETED", {

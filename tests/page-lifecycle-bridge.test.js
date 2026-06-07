@@ -60,6 +60,26 @@ function lifecycleDetails(messages) {
   return messages.map((entry) => entry.message.detail);
 }
 
+function installChatGptBridgeConfig(bridge) {
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "chatgpt",
+        hosts: ["chatgpt.com", "chat.openai.com"],
+        generationRequestMatchers: [
+          { pathname: "/backend-api/conversation" },
+          { pathname: "/backend-api/f/conversation" },
+          { pathname: "/conversation" },
+        ],
+        promptExtractor: "chatgpt",
+      },
+    },
+  });
+}
+
 async function waitFor(predicate) {
   for (let index = 0; index < 20; index += 1) {
     if (predicate()) {
@@ -73,6 +93,7 @@ test("normalizes relative generation request URLs before posting lifecycle event
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 204 }),
   });
+  installChatGptBridgeConfig(bridge);
 
   await bridge.window.fetch("/backend-api/conversation?model=gpt-test", {
     method: "POST",
@@ -99,6 +120,7 @@ test("extracts only a prompt excerpt from ChatGPT generation request body", asyn
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 204 }),
   });
+  installChatGptBridgeConfig(bridge);
 
   await bridge.window.fetch("/backend-api/f/conversation", {
     method: "POST",
@@ -144,6 +166,7 @@ test("writes lifecycle bridge logs only after debug logs are enabled", async () 
       },
     },
   });
+  installChatGptBridgeConfig(bridge);
 
   await bridge.window.fetch("/backend-api/conversation/extra", { method: "POST" });
   assert.deepEqual(logs, []);
@@ -168,6 +191,7 @@ test("observes generation requests passed as URL objects", async () => {
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 204 }),
   });
+  installChatGptBridgeConfig(bridge);
 
   await bridge.window.fetch(new URL("https://chatgpt.com/backend-api/conversation?model=gpt-test"), {
     method: "POST",
@@ -194,6 +218,7 @@ test("observes only exact ChatGPT generation paths", async () => {
       return new Response(null, { status: 204 });
     },
   });
+  installChatGptBridgeConfig(bridge);
 
   await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
   await bridge.window.fetch("/backend-api/f/conversation", { method: "POST" });
@@ -233,6 +258,7 @@ test("fails closed when a streaming response cannot be cloned for monitoring", a
   const bridge = createBridgeWindow({
     fetchImpl: async () => response,
   });
+  installChatGptBridgeConfig(bridge);
 
   const returnedResponse = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
 
@@ -253,6 +279,7 @@ test("fails closed when a cloned streaming response cannot be read for monitorin
   const bridge = createBridgeWindow({
     fetchImpl: async () => response,
   });
+  installChatGptBridgeConfig(bridge);
 
   const returnedResponse = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
 
@@ -267,6 +294,7 @@ test("emits failed instead of completed for HTTP error responses without bodies"
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 500 }),
   });
+  installChatGptBridgeConfig(bridge);
 
   const response = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
 
@@ -288,6 +316,7 @@ test("preserves the original fetch Response while monitoring a clone", async () 
   const bridge = createBridgeWindow({
     fetchImpl: async () => originalResponse,
   });
+  installChatGptBridgeConfig(bridge);
 
   const returnedResponse = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
   const returnedText = await returnedResponse.text();
@@ -347,6 +376,7 @@ test("emits at most one terminal lifecycle phase per request", async () => {
     fetchImpl: async () => originalResponse,
     ResponseCtor: FakeResponse,
   });
+  installChatGptBridgeConfig(bridge);
 
   const response = await bridge.window.fetch("/backend-api/conversation", { method: "POST" });
   await response.body.getReader().cancel("caller stopped reading");
@@ -367,4 +397,147 @@ test("emits at most one terminal lifecycle phase per request", async () => {
   }
   assert.equal(response, originalResponse);
   assert.equal(originalBodyCanceled, true);
+});
+
+test("matches configured Gemini generation requests", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+
+  await bridge.window.fetch("https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate", {
+    method: "POST",
+    body: JSON.stringify([[[["Explain Kubernetes simply"]]]]),
+  });
+
+  assert.equal(bridge.details()[0].siteId, "gemini");
+  assert.equal(bridge.details()[0].phase, "started");
+  assert.equal(bridge.details()[0].promptExcerpt, "Explain Kubernetes simply");
+  assert.equal(bridge.details().at(-1).phase, "completed");
+});
+
+test("omits Gemini prompt excerpt when request body is malformed JSON", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+
+  await bridge.window.fetch("https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate", {
+    method: "POST",
+    body: "{not-json Explain Kubernetes simply",
+  });
+
+  assert.equal(bridge.details()[0].phase, "started");
+  assert.equal(Object.hasOwn(bridge.details()[0], "promptExcerpt"), false);
+  assert.equal(bridge.details().at(-1).phase, "completed");
+});
+
+test("extracts Gemini prompt after ignoring metadata strings", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+
+  await bridge.window.fetch("https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate", {
+    method: "POST",
+    body: JSON.stringify([
+      "StreamGenerate",
+      ["POST", "BardFrontendService"],
+      ["https://gemini.google.com/_/BardChatUi/data"],
+      [[["Explain Kubernetes simply"]]],
+    ]),
+  });
+
+  assert.equal(bridge.details()[0].promptExcerpt, "Explain Kubernetes simply");
+});
+
+test("ignores fetches until bridge config is received", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+
+  await bridge.window.fetch("https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate", {
+    method: "POST",
+    body: JSON.stringify([[[["Explain Kubernetes simply"]]]]),
+  });
+
+  assert.equal(bridge.details().length, 0);
+});
+
+test("ignores bridge configs with invalid or missing prompt extractor", async () => {
+  const invalidConfigs = [
+    {
+      siteId: "gemini",
+      hosts: ["gemini.google.com"],
+      generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+      promptExtractor: "unknown",
+    },
+    {
+      siteId: "gemini",
+      hosts: ["gemini.google.com"],
+      generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+    },
+  ];
+
+  for (const config of invalidConfigs) {
+    const bridge = createBridgeWindow({
+      location: "https://gemini.google.com/app",
+      fetchImpl: async () => new Response(null, { status: 204 }),
+    });
+    bridge.listeners.get("message")({
+      source: bridge.window,
+      data: {
+        source: "chat-notify-content-script",
+        type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+        config,
+      },
+    });
+
+    await bridge.window.fetch("https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate", {
+      method: "POST",
+      body: JSON.stringify([[[["Explain Kubernetes simply"]]]]),
+    });
+
+    assert.equal(bridge.details().length, 0);
+  }
 });

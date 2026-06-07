@@ -1,6 +1,7 @@
 (function installChatNotifyLifecycleBridge() {
   const LOG_PREFIX = "[Chat Notify]";
   let debugLogs = false;
+  let bridgeConfig = null;
 
   function log(level, message, detail) {
     if (!debugLogs || typeof console === "undefined" || typeof console[level] !== "function") {
@@ -20,28 +21,55 @@
   window.__chatNotifyLifecycleBridgeInstalled = true;
   log("info", "page lifecycle bridge installed");
 
+  function sanitizeBridgeConfig(config) {
+    if (!config || typeof config !== "object" || typeof config.siteId !== "string") {
+      return null;
+    }
+    if (config.promptExtractor !== "chatgpt" && config.promptExtractor !== "gemini") {
+      return null;
+    }
+    const hosts = Array.isArray(config.hosts) ? config.hosts.filter((host) => typeof host === "string") : [];
+    const matchers = Array.isArray(config.generationRequestMatchers)
+      ? config.generationRequestMatchers.filter((matcher) => matcher && typeof matcher === "object")
+      : [];
+    if (!hosts.length || !matchers.length) {
+      return null;
+    }
+    return {
+      siteId: config.siteId,
+      hosts,
+      generationRequestMatchers: matchers.map((matcher) => ({
+        pathname: typeof matcher.pathname === "string" ? matcher.pathname : "",
+        pathnameIncludes: typeof matcher.pathnameIncludes === "string" ? matcher.pathnameIncludes : "",
+      })),
+      promptExtractor: config.promptExtractor,
+    };
+  }
+
   window.addEventListener("message", (event) => {
     if (event.source !== window) {
       return;
     }
 
     const data = event.data || {};
-    if (data.source !== "chat-notify-content-script" || data.type !== "CHAT_NOTIFY_DEBUG_LOGS_CHANGED") {
+    if (data.source === "chat-notify-content-script" && data.type === "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG") {
+      const nextConfig = sanitizeBridgeConfig(data.config);
+      if (nextConfig) {
+        bridgeConfig = nextConfig;
+        log("info", "page lifecycle bridge config changed", { siteId: bridgeConfig.siteId });
+      }
       return;
     }
 
+    if (data.source !== "chat-notify-content-script" || data.type !== "CHAT_NOTIFY_DEBUG_LOGS_CHANGED") {
+      return;
+    }
     debugLogs = Boolean(data.debugLogs);
     log("info", "page lifecycle bridge debug state changed", { debugLogs });
   });
 
   const originalFetch = window.fetch;
   let sequence = 0;
-  const CHATGPT_HOSTS = new Set(["chatgpt.com", "chat.openai.com"]);
-  const GENERATION_URL_PATHS = new Set([
-    "/backend-api/conversation",
-    "/backend-api/f/conversation",
-    "/conversation",
-  ]);
   const PROMPT_EXCERPT_LIMIT = 40;
 
   function createPromptExcerpt(value) {
@@ -69,7 +97,20 @@
     return "";
   }
 
+  function matcherMatchesPath(matcher, pathname) {
+    if (matcher.pathname && pathname === matcher.pathname) {
+      return true;
+    }
+    if (matcher.pathnameIncludes && pathname.includes(matcher.pathnameIncludes)) {
+      return true;
+    }
+    return false;
+  }
+
   function getNormalizedUrl(input) {
+    if (!bridgeConfig) {
+      return "";
+    }
     const url = getInputUrl(input);
     if (!url) {
       return "";
@@ -77,7 +118,10 @@
 
     try {
       const parsed = new URL(url, window.location.href);
-      if (!CHATGPT_HOSTS.has(parsed.hostname) || !GENERATION_URL_PATHS.has(parsed.pathname)) {
+      if (!bridgeConfig.hosts.includes(parsed.hostname)) {
+        return "";
+      }
+      if (!bridgeConfig.generationRequestMatchers.some((matcher) => matcherMatchesPath(matcher, parsed.pathname))) {
         return "";
       }
       return `${parsed.origin}${parsed.pathname}`;
@@ -92,6 +136,7 @@
       (input && input.method) ||
       "GET";
     const meta = {
+      siteId: bridgeConfig.siteId,
       url: normalizedUrl,
       method: String(method || "GET").toUpperCase(),
     };
@@ -125,7 +170,7 @@
     return "";
   }
 
-  function extractPromptExcerpt(input, init) {
+  function extractChatGptPromptExcerpt(input, init) {
     const body = getRequestBody(input, init);
     if (!body || body.length > 200000) {
       return "";
@@ -148,6 +193,56 @@
       return "";
     }
     return "";
+  }
+
+  function collectStrings(value, result) {
+    if (typeof value === "string") {
+      result.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectStrings(entry, result));
+    }
+  }
+
+  function isLikelyGeminiMetadata(value) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return true;
+    }
+    if (/^https?:\/\//i.test(trimmed) || /^\d+$/.test(trimmed)) {
+      return true;
+    }
+    if (/^(StreamGenerate|POST|GET|BardFrontendService)$/i.test(trimmed)) {
+      return true;
+    }
+    return trimmed.includes("BardChatUi");
+  }
+
+  function extractGeminiPromptExcerpt(input, init) {
+    const body = getRequestBody(input, init);
+    if (!body || body.length > 200000) {
+      return "";
+    }
+    try {
+      const parsed = JSON.parse(body);
+      const strings = [];
+      collectStrings(parsed, strings);
+      const candidate = strings.find((value) => !isLikelyGeminiMetadata(value));
+      return createPromptExcerpt(candidate || "");
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function extractPromptExcerpt(input, init) {
+    if (!bridgeConfig) {
+      return "";
+    }
+    if (bridgeConfig.promptExtractor === "gemini") {
+      return extractGeminiPromptExcerpt(input, init);
+    }
+    return extractChatGptPromptExcerpt(input, init);
   }
 
   function postLifecycleEvent(detail) {

@@ -42,6 +42,8 @@ function createContentScriptContext({
   enabled = true,
   debugLogs = false,
   supported = true,
+  location = "https://chatgpt.com/c/test",
+  extraApi = {},
   consoleApi = console,
 } = {}) {
   const source = fs.readFileSync(CONTENT_SCRIPT_PATH, "utf8");
@@ -65,8 +67,14 @@ function createContentScriptContext({
     matchesLocation: () => supported,
     isSendEvent: (event) => Boolean(event && event.isSend),
     normalizeLifecycleEvent: (detail) => detail && detail.normalized,
+    getLifecycleBridgeConfig: () => ({
+      siteId: "chatgpt",
+      hosts: ["chatgpt.com", "chat.openai.com"],
+      generationRequestMatchers: [{ pathname: "/backend-api/f/conversation" }],
+      promptExtractor: "chatgpt",
+    }),
   };
-  const api = {
+  const api = Object.assign({
     createChatGptAdapter: () => adapter,
     createMonitorController: (options) => {
       controllerOptions = options;
@@ -83,9 +91,9 @@ function createContentScriptContext({
       };
     },
     createResponseCompletedMessage: (event) => ({ type: "AI_RESPONSE_COMPLETED", payload: event }),
-  };
+  }, extraApi);
   const window = {
-    location: new URL("https://chatgpt.com/c/test"),
+    location: new URL(location),
     addEventListener(type, listener) {
       windowListeners.set(type, listener);
     },
@@ -137,7 +145,7 @@ function createContentScriptContext({
   vm.runInNewContext(source, context, { filename: CONTENT_SCRIPT_PATH });
 
   return {
-    adapter,
+    adapter: controllerOptions && controllerOptions.adapter,
     getControllerOptions: () => controllerOptions,
     controllerCalls,
     documentFixture,
@@ -326,7 +334,11 @@ test("forwards debug log state to the page lifecycle bridge", () => {
   context.documentFixture.scripts[0].onload();
   context.storageChangeListeners[0]({ debugLogs: { newValue: true } }, "sync");
 
-  assert.deepEqual(context.postedMessages, [
+  const debugMessages = context.postedMessages.filter(
+    (entry) => entry.message.type === "CHAT_NOTIFY_DEBUG_LOGS_CHANGED"
+  );
+
+  assert.deepEqual(debugMessages, [
     {
       message: {
         source: "chat-notify-content-script",
@@ -344,4 +356,45 @@ test("forwards debug log state to the page lifecycle bridge", () => {
       targetOrigin: "https://chatgpt.com",
     },
   ]);
+});
+
+test("sends selected adapter lifecycle bridge config after bridge injection", async () => {
+  const context = createContentScriptContext({
+    enabled: true,
+  });
+  context.documentFixture.scripts[0].onload();
+
+  const messages = context.postedMessages
+    .map((entry) => entry.message)
+    .filter((message) => message.type === "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG");
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].config.siteId, "chatgpt");
+  assert.equal(messages[0].config.promptExtractor, "chatgpt");
+});
+
+test("registers Gemini adapter in content script", () => {
+  const geminiAdapter = {
+    siteId: "gemini",
+    displayName: "Gemini",
+    canObserveLifecycle: true,
+    matchesLocation: (location) => location.hostname === "gemini.google.com",
+    isSendEvent: () => false,
+    normalizeLifecycleEvent: () => null,
+    getLifecycleBridgeConfig: () => ({
+      siteId: "gemini",
+      hosts: ["gemini.google.com"],
+      generationRequestMatchers: [{ pathnameIncludes: "StreamGenerate" }],
+      promptExtractor: "gemini",
+    }),
+  };
+  const context = createContentScriptContext({
+    supported: false,
+    location: "https://gemini.google.com/app",
+    extraApi: {
+      createGeminiAdapter: () => geminiAdapter,
+    },
+  });
+
+  assert.equal(context.adapter.siteId, "gemini");
 });

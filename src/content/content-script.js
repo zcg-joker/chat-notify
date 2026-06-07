@@ -24,6 +24,9 @@
   log("info", "content script loaded", { href: window.location.href });
 
   const adapters = [api.createChatGptAdapter()];
+  if (typeof api.createGeminiAdapter === "function") {
+    adapters.push(api.createGeminiAdapter());
+  }
   const adapter = adapters.find((candidate) => candidate.matchesLocation(window.location));
 
   if (!adapter) {
@@ -41,6 +44,20 @@
         source: "chat-notify-content-script",
         type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
         debugLogs,
+      },
+      window.location.origin
+    );
+  }
+
+  function postBridgeConfig() {
+    if (!adapter.canObserveLifecycle || typeof adapter.getLifecycleBridgeConfig !== "function") {
+      return;
+    }
+    window.postMessage(
+      {
+        source: "chat-notify-content-script",
+        type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+        config: adapter.getLifecycleBridgeConfig(),
       },
       window.location.origin
     );
@@ -77,6 +94,7 @@
     script.src = chrome.runtime.getURL("src/content/page-lifecycle-bridge.js");
     script.onload = () => {
       log("info", "page lifecycle bridge injected");
+      postBridgeConfig();
       postDebugStateToBridge();
       script.remove();
     };

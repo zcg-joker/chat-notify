@@ -127,6 +127,13 @@
     return coveredScenarios.length ? `Covered: ${coveredScenarios.join(", ")}` : "";
   }
 
+  function formatSampleCoverage(comparison) {
+    if (!comparison || !Number.isFinite(comparison.sampleCount)) {
+      return "";
+    }
+    return [`Samples: ${comparison.sampleCount}`, formatScenarioCoverage(comparison)].filter(Boolean).join("; ");
+  }
+
   function formatChecklistBlocker(checklist) {
     const items = Array.isArray(checklist) ? checklist : [];
     const blocker =
@@ -146,14 +153,16 @@
     const recommendation = diagnostics && diagnostics.recommendation;
     if (recommendation && recommendation.status) {
       probeReadiness.textContent = titleCaseStatus(recommendation.status);
+      const sampleCoverage = formatSampleCoverage(diagnostics && diagnostics.probeComparison);
       const candidate = recommendation.primaryCandidate;
       if (candidate) {
         const stability = candidate.stability ? `, ${candidate.stability}` : "";
-        probeTopCandidate.textContent = `Candidate: ${formatCandidate(candidate)} (score ${
+        const candidateText = `Candidate: ${formatCandidate(candidate)} (score ${
           candidate.score || 0
         }${stability})`;
+        probeTopCandidate.textContent = [candidateText, sampleCoverage].filter(Boolean).join("; ");
       } else {
-        probeTopCandidate.textContent = recommendation.summary || "";
+        probeTopCandidate.textContent = [recommendation.summary || "", sampleCoverage].filter(Boolean).join("; ");
       }
       const nextActions = Array.isArray(recommendation.nextActions) ? recommendation.nextActions : [];
       const missingScenarios = Array.isArray(recommendation.missingScenarios)

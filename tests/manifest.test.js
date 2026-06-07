@@ -3,10 +3,14 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-test("manifest uses MV3 and minimal permissions", () => {
-  const manifest = JSON.parse(
+function readManifest() {
+  return JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8")
   );
+}
+
+test("manifest uses MV3 and minimal permissions", () => {
+  const manifest = readManifest();
 
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.permissions.sort(), ["notifications", "storage", "tabs"].sort());
@@ -18,9 +22,7 @@ test("manifest uses MV3 and minimal permissions", () => {
 });
 
 test("manifest declares content scripts in dependency order", () => {
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8")
-  );
+  const manifest = readManifest();
   const scripts = manifest.content_scripts[0].js;
 
   assert.deepEqual(scripts, [
@@ -32,15 +34,34 @@ test("manifest declares content scripts in dependency order", () => {
     "src/core/dom-watch.js",
     "src/adapters/adapter-contract.js",
     "src/adapters/chatgpt-adapter.js",
+    "src/adapters/gemini-adapter.js",
     "src/core/monitor-controller.js",
     "src/content/content-script.js",
   ]);
 });
 
-test("manifest icons use supported PNG files", () => {
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8")
+test("manifest supports Gemini content script loading", () => {
+  const manifest = readManifest();
+  const scripts = manifest.content_scripts[0];
+
+  assert.ok(scripts.matches.includes("https://gemini.google.com/*"));
+  assert.ok(scripts.js.includes("src/adapters/gemini-adapter.js"));
+  assert.ok(
+    scripts.js.indexOf("src/adapters/gemini-adapter.js") <
+      scripts.js.indexOf("src/content/content-script.js")
   );
+});
+
+test("manifest exposes lifecycle bridge resources on Gemini pages", () => {
+  const manifest = readManifest();
+  const resources = manifest.web_accessible_resources[0];
+
+  assert.ok(resources.resources.includes("src/content/page-lifecycle-bridge.js"));
+  assert.ok(resources.matches.includes("https://gemini.google.com/*"));
+});
+
+test("manifest icons use supported PNG files", () => {
+  const manifest = readManifest();
 
   assert.deepEqual(Object.keys(manifest.icons).sort(), ["128", "16", "32", "48"]);
 

@@ -25,7 +25,8 @@
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
       ],
       "js": [
         "src/shared/constants.js",
@@ -36,6 +37,7 @@
         "src/core/dom-watch.js",
         "src/adapters/adapter-contract.js",
         "src/adapters/chatgpt-adapter.js",
+        "src/adapters/gemini-adapter.js",
         "src/core/monitor-controller.js",
         "src/content/content-script.js"
       ],
@@ -47,7 +49,8 @@
       "resources": ["src/content/page-lifecycle-bridge.js", "assets/icon.svg"],
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
       ]
     }
   ]

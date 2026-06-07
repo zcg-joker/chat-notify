@@ -1,8 +1,9 @@
 (function installChatNotifyContentScript() {
   const LOG_PREFIX = "[Chat Notify]";
+  let debugLogs = false;
 
   function log(level, message, detail) {
-    if (typeof console === "undefined" || typeof console[level] !== "function") {
+    if (!debugLogs || typeof console === "undefined" || typeof console[level] !== "function") {
       return;
     }
     if (detail === undefined) {
@@ -33,6 +34,17 @@
 
   let enabled = false;
   let observersInstalled = false;
+
+  function postDebugStateToBridge() {
+    window.postMessage(
+      {
+        source: "chat-notify-content-script",
+        type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+        debugLogs,
+      },
+      window.location.origin
+    );
+  }
 
   function sendCompletion(event) {
     if (!enabled) {
@@ -65,6 +77,7 @@
     script.src = chrome.runtime.getURL("src/content/page-lifecycle-bridge.js");
     script.onload = () => {
       log("info", "page lifecycle bridge injected");
+      postDebugStateToBridge();
       script.remove();
     };
     script.onerror = () => {
@@ -150,7 +163,17 @@
 
   if (chrome.storage.onChanged && typeof chrome.storage.onChanged.addListener === "function") {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "sync" && changes.enabled) {
+      if (areaName !== "sync") {
+        return;
+      }
+
+      if (changes.debugLogs) {
+        debugLogs = Boolean(changes.debugLogs.newValue);
+        log("info", "debug log state changed", { debugLogs });
+        postDebugStateToBridge();
+      }
+
+      if (changes.enabled) {
         enabled = Boolean(changes.enabled.newValue);
         log("info", "enabled state changed", { enabled });
         if (enabled) {
@@ -160,8 +183,9 @@
     });
   }
 
-  chrome.storage.sync.get({ enabled: true }, (settings) => {
+  chrome.storage.sync.get({ enabled: true, debugLogs: false }, (settings) => {
     enabled = Boolean(settings.enabled);
+    debugLogs = Boolean(settings.debugLogs);
     log("info", "initial enabled state loaded", { enabled });
     if (!enabled) {
       return;

@@ -38,10 +38,16 @@ function createFakeDocument() {
   return { document, listeners, scripts };
 }
 
-function createContentScriptContext({ enabled = true, supported = true, consoleApi = console } = {}) {
+function createContentScriptContext({
+  enabled = true,
+  debugLogs = false,
+  supported = true,
+  consoleApi = console,
+} = {}) {
   const source = fs.readFileSync(CONTENT_SCRIPT_PATH, "utf8");
   const documentFixture = createFakeDocument();
   const sentMessages = [];
+  const postedMessages = [];
   const intervals = [];
   const timeouts = [];
   const windowListeners = new Map();
@@ -83,6 +89,9 @@ function createContentScriptContext({ enabled = true, supported = true, consoleA
     addEventListener(type, listener) {
       windowListeners.set(type, listener);
     },
+    postMessage(message, targetOrigin) {
+      postedMessages.push({ message: JSON.parse(JSON.stringify(message)), targetOrigin });
+    },
     setTimeout(callback) {
       timeouts.push(callback);
       return timeouts.length;
@@ -110,7 +119,7 @@ function createContentScriptContext({ enabled = true, supported = true, consoleA
       },
       sync: {
         get(_defaults, callback) {
-          callback({ enabled });
+          callback({ enabled, debugLogs });
         },
       },
     },
@@ -133,6 +142,7 @@ function createContentScriptContext({ enabled = true, supported = true, consoleA
     controllerCalls,
     documentFixture,
     intervals,
+    postedMessages,
     sentMessages,
     storageChangeListeners,
     timeouts,
@@ -153,6 +163,32 @@ test("installs bridge and event listeners when enabled on a supported page", () 
   assert.equal(context.documentFixture.listeners.get("keydown").useCapture, true);
   assert.equal(context.windowListeners.has("message"), true);
   assert.equal(context.intervals[0].intervalMs, 500);
+});
+
+test("does not write debug logs by default", () => {
+  const logs = [];
+  const context = createContentScriptContext({
+    consoleApi: {
+      info(prefix, message, detail) {
+        logs.push({ level: "info", prefix, message, detail });
+      },
+      warn(prefix, message, detail) {
+        logs.push({ level: "warn", prefix, message, detail });
+      },
+      debug(prefix, message, detail) {
+        logs.push({ level: "debug", prefix, message, detail });
+      },
+    },
+  });
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.getControllerOptions().onCompleted({
+    siteId: "chatgpt",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Prompt",
+  });
+
+  assert.deepEqual(logs, []);
 });
 
 test("does not install listeners when disabled", () => {
@@ -256,6 +292,7 @@ test("sends completion messages through runtime messaging", () => {
 test("logs runtime response after sending completion message", () => {
   const logs = [];
   const context = createContentScriptContext({
+    debugLogs: true,
     consoleApi: {
       info(prefix, message, detail) {
         logs.push({ prefix, message, detail });
@@ -275,4 +312,36 @@ test("logs runtime response after sending completion message", () => {
     ok: true,
     notificationId: "notification-id",
   });
+});
+
+test("forwards debug log state to the page lifecycle bridge", () => {
+  const context = createContentScriptContext({
+    consoleApi: {
+      info() {},
+      warn() {},
+      debug() {},
+    },
+  });
+
+  context.documentFixture.scripts[0].onload();
+  context.storageChangeListeners[0]({ debugLogs: { newValue: true } }, "sync");
+
+  assert.deepEqual(context.postedMessages, [
+    {
+      message: {
+        source: "chat-notify-content-script",
+        type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+        debugLogs: false,
+      },
+      targetOrigin: "https://chatgpt.com",
+    },
+    {
+      message: {
+        source: "chat-notify-content-script",
+        type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+        debugLogs: true,
+      },
+      targetOrigin: "https://chatgpt.com",
+    },
+  ]);
 });

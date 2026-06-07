@@ -136,6 +136,58 @@ test("creates test notification", async () => {
   assert.equal(created[0].options.message, "Notifications are working");
 });
 
+test("writes background logs only when debug logs are enabled", async () => {
+  const logs = [];
+  const originalConsole = globalThis.console;
+  globalThis.console = {
+    info(prefix, message, detail) {
+      logs.push({ level: "info", prefix, message, detail });
+    },
+    warn(prefix, message, detail) {
+      logs.push({ level: "warn", prefix, message, detail });
+    },
+    debug(prefix, message, detail) {
+      logs.push({ level: "debug", prefix, message, detail });
+    },
+  };
+
+  try {
+    const createService = (debugLogs) => createNotificationService({
+      chromeApi: {
+        storage: {
+          sync: {
+            get(defaults, callback) {
+              callback(Object.assign({}, defaults, { enabled: true, debugLogs }));
+            },
+          },
+        },
+        runtime: {
+          getURL(path) {
+            return `chrome-extension://test/${path}`;
+          },
+        },
+        notifications: {
+          create(id, _options, callback) {
+            callback(id);
+          },
+        },
+      },
+      now: () => 1780761600000,
+    });
+
+    await createService(false).handleMessage(createTestNotificationMessage());
+    assert.deepEqual(logs, []);
+
+    await createService(true).handleMessage(createTestNotificationMessage());
+    assert.deepEqual(
+      logs.map((entry) => entry.message),
+      ["background message received", "test notification created"]
+    );
+  } finally {
+    globalThis.console = originalConsole;
+  }
+});
+
 test("ignores non-completion messages", async () => {
   const service = createNotificationService({
     chromeApi: {

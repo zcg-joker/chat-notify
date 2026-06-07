@@ -39,6 +39,7 @@ npm test
 ## Manual Validation
 
 - Load the unpacked extension in Chrome.
+- Keep popup debug logs off for normal use; enable "Debug logs" only when checking `[Chat Notify]` diagnostics in the page or service worker console.
 - Send a short ChatGPT prompt and confirm one notification after completion.
 - Open two ChatGPT tabs, send prompts in both, and confirm two independent notifications.
 - In one ChatGPT tab, send a prompt in Conversation A, switch to Conversation B, send another prompt, and confirm both observable completions notify independently.

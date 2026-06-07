@@ -23,10 +23,15 @@ function createElement(id) {
   };
 }
 
-function runPopup({ enabled = true, tabUrl = "https://chatgpt.com/c/test" } = {}) {
+function runPopup({
+  enabled = true,
+  debugLogs = false,
+  tabUrl = "https://chatgpt.com/c/test",
+} = {}) {
   const source = fs.readFileSync(POPUP_JS_PATH, "utf8");
   const elements = {
     "enabled-toggle": createElement("enabled-toggle"),
+    "debug-logs-toggle": createElement("debug-logs-toggle"),
     "test-notification": createElement("test-notification"),
     "site-status": createElement("site-status"),
   };
@@ -42,7 +47,7 @@ function runPopup({ enabled = true, tabUrl = "https://chatgpt.com/c/test" } = {}
       storage: {
         sync: {
           get(_defaults, callback) {
-            callback({ enabled });
+            callback({ enabled, debugLogs });
           },
           set(value) {
             storageWrites.push(value);
@@ -82,16 +87,22 @@ test("popup assets exist and reference expected scripts", () => {
   const css = fs.readFileSync(POPUP_CSS_PATH, "utf8");
 
   assert.match(html, /id="enabled-toggle"/);
+  assert.match(html, /id="debug-logs-toggle"/);
   assert.match(html, /id="test-notification"/);
   assert.match(html, /src="\.\.\/shared\/messages\.js"/);
   assert.match(html, /src="\.\/popup\.js"/);
   assert.match(css, /\.popup/);
 });
 
-test("popup initializes enabled state and supported site status", () => {
-  const popup = runPopup({ enabled: false, tabUrl: "https://chatgpt.com/c/test" });
+test("popup initializes stored toggle states and supported site status", () => {
+  const popup = runPopup({
+    enabled: false,
+    debugLogs: true,
+    tabUrl: "https://chatgpt.com/c/test",
+  });
 
   assert.equal(popup.elements["enabled-toggle"].checked, false);
+  assert.equal(popup.elements["debug-logs-toggle"].checked, true);
   assert.equal(popup.elements["site-status"].textContent, "Current page is supported");
 });
 
@@ -100,11 +111,14 @@ test("popup stores toggle changes and sends test notification message", () => {
 
   popup.elements["enabled-toggle"].checked = false;
   popup.elements["enabled-toggle"].dispatch("change");
+  popup.elements["debug-logs-toggle"].checked = true;
+  popup.elements["debug-logs-toggle"].dispatch("change");
   popup.elements["test-notification"].dispatch("click");
 
   assert.equal(popup.elements["site-status"].textContent, "Current page is not supported");
-  assert.equal(popup.storageWrites.length, 1);
+  assert.equal(popup.storageWrites.length, 2);
   assert.equal(popup.storageWrites[0].enabled, false);
+  assert.equal(popup.storageWrites[1].debugLogs, true);
   assert.equal(popup.runtimeMessages.length, 1);
   assert.equal(popup.runtimeMessages[0].type, "TEST_NOTIFICATION");
 });

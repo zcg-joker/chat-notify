@@ -1,8 +1,9 @@
 (function installChatNotifyLifecycleBridge() {
   const LOG_PREFIX = "[Chat Notify]";
+  let debugLogs = false;
 
   function log(level, message, detail) {
-    if (typeof console === "undefined" || typeof console[level] !== "function") {
+    if (!debugLogs || typeof console === "undefined" || typeof console[level] !== "function") {
       return;
     }
     if (detail === undefined) {
@@ -18,6 +19,20 @@
   }
   window.__chatNotifyLifecycleBridgeInstalled = true;
   log("info", "page lifecycle bridge installed");
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) {
+      return;
+    }
+
+    const data = event.data || {};
+    if (data.source !== "chat-notify-content-script" || data.type !== "CHAT_NOTIFY_DEBUG_LOGS_CHANGED") {
+      return;
+    }
+
+    debugLogs = Boolean(data.debugLogs);
+    log("info", "page lifecycle bridge debug state changed", { debugLogs });
+  });
 
   const originalFetch = window.fetch;
   let sequence = 0;

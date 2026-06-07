@@ -99,8 +99,37 @@
       });
     }
 
+    function getDebugLogs() {
+      return new Promise((resolve) => {
+        if (!chromeApi.storage || !chromeApi.storage.sync || typeof chromeApi.storage.sync.get !== "function") {
+          resolve(false);
+          return;
+        }
+
+        try {
+          chromeApi.storage.sync.get({ debugLogs: false }, (settings) => {
+            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            if (lastError) {
+              resolve(false);
+              return;
+            }
+            resolve(Boolean(settings.debugLogs));
+          });
+        } catch (_error) {
+          resolve(false);
+        }
+      });
+    }
+
     async function handleMessage(message, sender = {}) {
-      log("debug", "background message received", { type: message && message.type, senderTabId: sender.tab && sender.tab.id });
+      const debugLogs = await getDebugLogs();
+      const writeLog = (level, logMessage, detail) => {
+        if (debugLogs) {
+          log(level, logMessage, detail);
+        }
+      };
+
+      writeLog("debug", "background message received", { type: message && message.type, senderTabId: sender.tab && sender.tab.id });
       if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
         const id = `chat-notify:test:${now()}`;
         const notificationResult = await notify(id, {
@@ -111,20 +140,20 @@
           priority: 1,
         });
         if (!notificationResult.ok) {
-          log("warn", "test notification failed", notificationResult.error);
+          writeLog("warn", "test notification failed", notificationResult.error);
           return { ok: false, error: notificationResult.error, notificationId: id };
         }
-        log("info", "test notification created", id);
+        writeLog("info", "test notification created", id);
         return { ok: true, notificationId: id };
       }
 
       if (!message || message.type !== MESSAGE_TYPES.AI_RESPONSE_COMPLETED) {
-        log("debug", "background message ignored");
+        writeLog("debug", "background message ignored");
         return { ok: false, ignored: true };
       }
 
       if (!(await getEnabled())) {
-        log("info", "completion notification ignored because extension is disabled");
+        writeLog("info", "completion notification ignored because extension is disabled");
         return { ok: false, ignored: true, disabled: true };
       }
 
@@ -141,10 +170,10 @@
 
       const notificationResult = await notify(id, buildCompletionNotification(payload, chromeApi));
       if (!notificationResult.ok) {
-        log("warn", "completion notification failed", notificationResult.error);
+        writeLog("warn", "completion notification failed", notificationResult.error);
         return { ok: false, error: notificationResult.error, notificationId: id };
       }
-      log("info", "completion notification created", {
+      writeLog("info", "completion notification created", {
         notificationId: id,
         siteId: payload.siteId,
         sessionKey: payload.sessionKey,

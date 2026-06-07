@@ -12,8 +12,10 @@ function createBridgeWindow({
   location = "https://chatgpt.com/c/test-chat",
   fetchImpl = async () => new Response(null, { status: 204 }),
   ResponseCtor = Response,
+  consoleApi,
 } = {}) {
   const messages = [];
+  const listeners = new Map();
   const url = new URL(location);
   const window = {
     location: {
@@ -22,6 +24,9 @@ function createBridgeWindow({
       hostname: url.hostname,
     },
     fetch: fetchImpl,
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
     postMessage(message, targetOrigin) {
       messages.push({ message, targetOrigin });
     },
@@ -35,12 +40,16 @@ function createBridgeWindow({
     Date,
     Promise,
   };
+  if (consoleApi) {
+    context.console = consoleApi;
+  }
 
   vm.runInNewContext(BRIDGE_SOURCE, context, { filename: BRIDGE_PATH });
 
   return {
     window,
     messages,
+    listeners,
     details() {
       return messages.map((entry) => entry.message.detail);
     },
@@ -117,6 +126,42 @@ test("extracts only a prompt excerpt from ChatGPT generation request body", asyn
   );
   assert.equal(Object.hasOwn(bridge.details()[0], "body"), false);
   assert.equal(Object.hasOwn(bridge.details()[0], "messages"), false);
+});
+
+test("writes lifecycle bridge logs only after debug logs are enabled", async () => {
+  const logs = [];
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => new Response(null, { status: 204 }),
+    consoleApi: {
+      info(prefix, message, detail) {
+        logs.push({ level: "info", prefix, message, detail });
+      },
+      warn(prefix, message, detail) {
+        logs.push({ level: "warn", prefix, message, detail });
+      },
+      debug(prefix, message, detail) {
+        logs.push({ level: "debug", prefix, message, detail });
+      },
+    },
+  });
+
+  await bridge.window.fetch("/backend-api/conversation/extra", { method: "POST" });
+  assert.deepEqual(logs, []);
+
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+      debugLogs: true,
+    },
+  });
+  await bridge.window.fetch("/backend-api/conversation/extra", { method: "POST" });
+
+  assert.deepEqual(
+    logs.map((entry) => entry.message),
+    ["page lifecycle bridge debug state changed", "fetch ignored by lifecycle bridge"]
+  );
 });
 
 test("observes generation requests passed as URL objects", async () => {

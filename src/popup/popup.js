@@ -1,10 +1,12 @@
 (function installPopup() {
   const enabledToggle = document.getElementById("enabled-toggle");
+  const debugLogsToggle = document.getElementById("debug-logs-toggle");
   const testButton = document.getElementById("test-notification");
   const siteStatus = document.getElementById("site-status");
 
-  chrome.storage.sync.get({ enabled: true }, (settings) => {
+  chrome.storage.sync.get({ enabled: true, debugLogs: false }, (settings) => {
     enabledToggle.checked = Boolean(settings.enabled);
+    debugLogsToggle.checked = Boolean(settings.debugLogs);
   });
 
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -21,6 +23,10 @@
 
   enabledToggle.addEventListener("change", () => {
     chrome.storage.sync.set({ enabled: enabledToggle.checked });
+  });
+
+  debugLogsToggle.addEventListener("change", () => {
+    chrome.storage.sync.set({ debugLogs: debugLogsToggle.checked });
   });
 
   testButton.addEventListener("click", () => {

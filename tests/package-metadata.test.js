@@ -13,7 +13,7 @@ test("package metadata uses alpha version and MIT license", () => {
   const packageJson = readJson("package.json");
 
   assert.equal(packageJson.name, "chat-notify");
-  assert.equal(packageJson.version, "0.1.0-alpha.1");
+  assert.equal(packageJson.version, "0.2.0-alpha.1");
   assert.equal(packageJson.private, false);
   assert.equal(packageJson.license, "MIT");
   assert.equal(packageJson.scripts.test, "node --test");
@@ -23,7 +23,7 @@ test("package metadata uses alpha version and MIT license", () => {
 test("manifest keeps Chrome-compatible release version", () => {
   const manifest = readJson("manifest.json");
 
-  assert.equal(manifest.version, "0.1.0");
+  assert.equal(manifest.version, "0.2.0");
   assert.match(manifest.description, /ChatGPT/);
 });
 

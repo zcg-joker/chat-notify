@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process");
 
 const ROOT = path.join(__dirname, "..");
 const DIST = path.join(ROOT, "dist");
-const ZIP_PATH = path.join(DIST, "chat-notify-0.1.0-alpha.1.zip");
+const ZIP_PATH = path.join(DIST, "chat-notify-0.2.0-alpha.1.zip");
 const EXTENSION_DIR = path.join(DIST, "extension");
 
 function listZipEntries(zipPath) {
@@ -28,7 +28,7 @@ test("package script creates clean extension directory and zip", () => {
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /chat-notify-0\.1\.0-alpha\.1\.zip/);
+  assert.match(result.stdout, /chat-notify-0\.2\.0-alpha\.1\.zip/);
   assert.equal(fs.existsSync(ZIP_PATH), true);
   assert.equal(fs.existsSync(path.join(EXTENSION_DIR, "manifest.json")), true);
   assert.equal(fs.existsSync(path.join(EXTENSION_DIR, "src/content/content-script.js")), true);

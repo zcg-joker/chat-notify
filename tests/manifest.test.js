@@ -9,7 +9,7 @@ test("manifest uses MV3 and minimal permissions", () => {
   );
 
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions.sort(), ["notifications", "storage"].sort());
+  assert.deepEqual(manifest.permissions.sort(), ["notifications", "storage", "tabs"].sort());
   assert.deepEqual(manifest.host_permissions.sort(), [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",

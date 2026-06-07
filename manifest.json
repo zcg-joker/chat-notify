@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Chat Notify",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Notify when ChatGPT finishes responding.",
-  "permissions": ["notifications", "storage"],
+  "permissions": ["notifications", "storage", "tabs"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*"

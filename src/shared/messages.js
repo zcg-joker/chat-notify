@@ -79,6 +79,72 @@
     return result;
   }
 
+  function addCandidateSignal(signals, signal) {
+    if (!signals.includes(signal)) {
+      signals.push(signal);
+    }
+  }
+
+  function scoreGenerationCandidate(request) {
+    const path = cleanString(request.path).toLowerCase();
+    const method = cleanString(request.method).toUpperCase();
+    const signals = [];
+    let score = 0;
+
+    const isPost = method === "POST";
+    if (isPost) {
+      score += 30;
+      addCandidateSignal(signals, "post_method");
+    }
+
+    if (/generate|completion|message|response|answer|\/conversation(?:\/|$)|\/chat(?:\/|$)/.test(path)) {
+      score += 40;
+      addCandidateSignal(signals, "generation_path");
+    }
+    if (/stream|sse|events/.test(path)) {
+      score += 10;
+      addCandidateSignal(signals, "stream_path");
+    }
+    if (/chat|assistant|bard/.test(path)) {
+      score += 10;
+      addCandidateSignal(signals, "chat_path");
+    }
+    if (/telemetry|analytics|stats|beacon|sentinel|log|metrics|ces\//.test(path)) {
+      score -= 80;
+      addCandidateSignal(signals, "telemetry_path");
+    }
+    if (/prepare|warmup|bootstrap|init/.test(path)) {
+      score -= 50;
+      addCandidateSignal(signals, "prepare_path");
+    }
+    if (/conversation[s]?$|history|list|metadata|profile|settings/.test(path)) {
+      score += 20;
+      addCandidateSignal(signals, "metadata_path");
+    }
+    if (!isPost) {
+      score -= 10;
+      addCandidateSignal(signals, "non_post_method");
+    }
+
+    return Object.assign({}, request, {
+      score: Math.max(0, score),
+      signals,
+    });
+  }
+
+  function rankLikelyGenerationCandidates(requestCandidates) {
+    return requestCandidates
+      .map(scoreGenerationCandidate)
+      .filter((candidate) => candidate.score > 0 && candidate.signals.length > 1)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return left.path.localeCompare(right.path);
+      })
+      .slice(0, 5);
+  }
+
   function createProbeReport(input = {}) {
     const status = input.popupStatus || {};
     const diagnostics = status.diagnostics || {};
@@ -88,6 +154,7 @@
     const requestCandidates = Array.isArray(flow && flow.requestCandidates)
       ? flow.requestCandidates.map(sanitizeRequestProbe).filter(Boolean)
       : [];
+    const likelyGenerationCandidates = rankLikelyGenerationCandidates(requestCandidates);
     const matchedRequests = requestEvents
       .filter((event) => event.request.matched)
       .map((event) => event.request);
@@ -133,10 +200,12 @@
           matchedRequestCount: matchedRequests.length,
           ignoredRequestCount: ignoredRequests.length,
           requestCandidateCount: requestCandidates.length,
+          likelyGenerationCandidateCount: likelyGenerationCandidates.length,
           lifecycleEventTypes,
           notificationEventTypes,
         },
         requestCandidates,
+        likelyGenerationCandidates,
         matchedRequests,
         ignoredRequests,
         events,

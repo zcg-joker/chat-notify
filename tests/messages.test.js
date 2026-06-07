@@ -229,6 +229,7 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
         matchedRequestCount: 1,
         ignoredRequestCount: 1,
         requestCandidateCount: 1,
+        likelyGenerationCandidateCount: 0,
         lifecycleEventTypes: ["lifecycle_completed"],
         notificationEventTypes: ["notification_sent"],
       },
@@ -242,6 +243,7 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
           reason: "probe_observed_request",
         },
       ],
+      likelyGenerationCandidates: [],
       matchedRequests: [
         {
           requestKind: "fetch",
@@ -298,6 +300,110 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
   assert.equal(serialized.includes("token=secret"), false);
   assert.equal(serialized.includes("must not leak"), false);
   assert.equal(serialized.includes("Bearer token"), false);
+});
+
+test("createProbeReport ranks likely generation candidates for adapter design", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: false,
+      host: "example.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: false,
+    },
+    popupStatus: {
+      diagnostics: {
+        latestFlow: {
+          flowId: "probe:example.com:1780761600000",
+          siteId: "page-probe",
+          displayName: "Page Probe",
+          updatedAt: 1780761602000,
+          requestCandidates: [
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/telemetry/intake?token=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "xhr",
+              method: "POST",
+              host: "example.com",
+              path: "/api/chat/stream?conversation=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "fetch",
+              method: "GET",
+              host: "example.com",
+              path: "/api/conversations",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/prepare",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/generate",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+          ],
+          events: [],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(report.latestFlow.likelyGenerationCandidates, [
+    {
+      requestKind: "xhr",
+      method: "POST",
+      host: "example.com",
+      path: "/api/chat/stream",
+      matched: true,
+      reason: "probe_observed_request",
+      score: 90,
+      signals: ["post_method", "generation_path", "stream_path", "chat_path"],
+    },
+    {
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: "/api/generate",
+      matched: true,
+      reason: "probe_observed_request",
+      score: 70,
+      signals: ["post_method", "generation_path"],
+    },
+    {
+      requestKind: "fetch",
+      method: "GET",
+      host: "example.com",
+      path: "/api/conversations",
+      matched: true,
+      reason: "probe_observed_request",
+      score: 10,
+      signals: ["metadata_path", "non_post_method"],
+    },
+  ]);
+
+  const serialized = JSON.stringify(report);
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("conversation=secret"), false);
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

@@ -436,6 +436,21 @@ test("popup prioritizes probe recommendation in preview", () => {
               "Confirm the stable candidate appears in the missing scenarios.",
             ],
           },
+          adapterChecklist: [
+            {
+              item: "generation_request_matcher",
+              status: "needs_more_evidence",
+              evidence: ["POST example.com/api/chat/stream via fetch, stability 2/2"],
+              nextStep: "Collect missing key scenarios before drafting the adapter matcher.",
+            },
+            {
+              item: "scenario_coverage",
+              status: "needs_more_evidence",
+              evidence: ["short_response"],
+              missing: ["long_response", "same_tab_session_switch", "canceled_generation"],
+              nextStep: "Collect missing scenario probes before release-quality support.",
+            },
+          ],
           probeComparison: {
             sampleCount: 2,
             stableCandidates: [
@@ -461,7 +476,7 @@ test("popup prioritizes probe recommendation in preview", () => {
   );
   assert.equal(
     popup.elements["probe-risk"].textContent,
-    "Next: Run page probe for a long response. Missing: long_response",
+    "Blocked: scenario_coverage needs long_response, same_tab_session_switch, canceled_generation",
   );
 });
 

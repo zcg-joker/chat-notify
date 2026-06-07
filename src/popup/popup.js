@@ -127,6 +127,21 @@
     return coveredScenarios.length ? `Covered: ${coveredScenarios.join(", ")}` : "";
   }
 
+  function formatChecklistBlocker(checklist) {
+    const items = Array.isArray(checklist) ? checklist : [];
+    const blocker =
+      items.find((item) => item && item.status === "needs_more_evidence" && Array.isArray(item.missing) && item.missing.length) ||
+      items.find((item) => item && item.status === "needs_more_evidence");
+    if (!blocker) {
+      return "";
+    }
+    const itemName = blocker.item || "adapter_check";
+    if (Array.isArray(blocker.missing) && blocker.missing.length) {
+      return `Blocked: ${itemName} needs ${blocker.missing.join(", ")}`;
+    }
+    return blocker.nextStep ? `Blocked: ${itemName}: ${blocker.nextStep}` : `Blocked: ${itemName}`;
+  }
+
   function renderProbePreview(diagnostics) {
     const recommendation = diagnostics && diagnostics.recommendation;
     if (recommendation && recommendation.status) {
@@ -144,10 +159,12 @@
       const missingScenarios = Array.isArray(recommendation.missingScenarios)
         ? recommendation.missingScenarios
         : [];
+      const checklistBlocker = formatChecklistBlocker(diagnostics && diagnostics.adapterChecklist);
       probeRisk.textContent = [
+        checklistBlocker,
         nextActions.length ? `Next: ${nextActions[0]}` : "",
         missingScenarios.length ? `Missing: ${missingScenarios.join(", ")}` : "",
-      ].filter(Boolean).join(" ");
+      ].filter(Boolean).slice(0, 1).join(" ");
       return;
     }
 

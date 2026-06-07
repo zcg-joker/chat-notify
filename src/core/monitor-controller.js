@@ -208,6 +208,24 @@
 
     function tick() {
       for (const record of tracker.list()) {
+        const respondingResult = getOrCreateMachine(record.sessionKey).transition({
+          type: "RESPONDING_STATUS",
+          isResponding:
+            adapter && typeof adapter.isResponding === "function"
+              ? adapter.isResponding(root)
+              : false,
+        });
+
+        if (TERMINAL_STATES.has(respondingResult.state)) {
+          removeSession(record.sessionKey);
+          continue;
+        }
+
+        tracker.update(record.sessionKey, {
+          status: respondingResult.state,
+        });
+        completeIfNeeded(record.sessionKey, respondingResult);
+
         const result = getOrCreateMachine(record.sessionKey).transition({ type: "TICK" });
 
         if (TERMINAL_STATES.has(result.state)) {

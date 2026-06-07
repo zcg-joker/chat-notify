@@ -104,6 +104,7 @@ test("returns Gemini lifecycle bridge config", () => {
   assert.deepEqual(config.hosts, ["gemini.google.com"]);
   assert.equal(config.promptExtractor, "gemini");
   assert.ok(config.generationRequestMatchers.some((matcher) => matcher.pathnameIncludes === "StreamGenerate"));
+  assert.ok(config.generationRequestMatchers.some((matcher) => matcher.pathnameIncludes === "BardFrontendService"));
 });
 
 test("normalizes Gemini lifecycle events", () => {
@@ -124,4 +125,33 @@ test("normalizes Gemini lifecycle events", () => {
     method: "POST",
     promptExcerpt: "Explain Kubernetes simply",
   });
+});
+
+test("normalizes alternate Gemini BardFrontendService lifecycle URLs", () => {
+  const adapter = createGeminiAdapter();
+  const normalized = adapter.normalizeLifecycleEvent({
+    siteId: "gemini",
+    phase: "completed",
+    lifecycleId: "fetch:2",
+    url: "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=wrb.fr",
+    method: "POST",
+  });
+
+  assert.equal(normalized.type, "GENERATION_COMPLETED");
+  assert.equal(normalized.lifecycleId, "fetch:2");
+});
+
+test("ignores unrelated Gemini batch RPC lifecycle URLs", () => {
+  const adapter = createGeminiAdapter();
+
+  assert.equal(
+    adapter.normalizeLifecycleEvent({
+      siteId: "gemini",
+      phase: "completed",
+      lifecycleId: "fetch:3",
+      url: "https://gemini.google.com/_/SomeOtherUi/data/batchexecute",
+      method: "POST",
+    }),
+    null
+  );
 });

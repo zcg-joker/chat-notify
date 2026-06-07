@@ -121,6 +121,11 @@
       }
 
       if (context.state === RESPONSE_STATES.SETTLING) {
+        if (event.type === "RESPONDING_STATUS" && event.isResponding) {
+          context.settleStartedAt = timestamp;
+          return snapshot();
+        }
+
         if (event.type === "ASSISTANT_SNAPSHOT_CHANGED") {
           context.settleStartedAt = timestamp;
           return snapshot();

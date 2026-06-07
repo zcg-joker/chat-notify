@@ -94,6 +94,25 @@ test("completion notification is emitted once", () => {
   assert.equal(machine.transition({ type: "TICK" }).shouldNotify, false);
 });
 
+test("does not complete while UI is still responding after generation stream ends", () => {
+  let currentTime = 1000;
+  const machine = createResponseStateMachine({ now: () => currentTime, settleMs: 10 });
+
+  machine.transition({ type: "USER_MESSAGE_SENT", sessionKey: "conversation:a" });
+  machine.transition({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  machine.transition({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+  currentTime = 1011;
+
+  const stillResponding = machine.transition({ type: "RESPONDING_STATUS", isResponding: true });
+  assert.equal(stillResponding.state, RESPONSE_STATES.SETTLING);
+  assert.equal(stillResponding.shouldNotify, false);
+
+  currentTime = 1022;
+  const completed = machine.transition({ type: "TICK" });
+  assert.equal(completed.state, RESPONSE_STATES.COMPLETED);
+  assert.equal(completed.shouldNotify, true);
+});
+
 test("explicit zero settle completes on immediate tick after generation complete", () => {
   const machine = createResponseStateMachine({ now: () => 1000, settleMs: 0 });
 

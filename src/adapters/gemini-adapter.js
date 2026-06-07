@@ -30,7 +30,10 @@
     canceled: "GENERATION_CANCELED",
     failed: "GENERATION_FAILED",
   });
-  const STREAM_GENERATE_PATH_PART = "StreamGenerate";
+  const GENERATION_PATH_PARTS = Object.freeze([
+    "StreamGenerate",
+    "BardFrontendService",
+  ]);
 
   function defaultTempKeySeed() {
     return `${Date.now()}:${Math.random().toString(36).slice(2)}`;
@@ -77,7 +80,11 @@
   function isGenerationUrl(url) {
     try {
       const parsed = new URL(url);
-      return GEMINI_HOSTS.has(parsed.hostname) && parsed.pathname.includes(STREAM_GENERATE_PATH_PART);
+      if (!GEMINI_HOSTS.has(parsed.hostname)) {
+        return false;
+      }
+      return GENERATION_PATH_PARTS.some((part) => parsed.pathname.includes(part)) ||
+        (parsed.pathname.includes("BardChatUi") && parsed.pathname.includes("batchexecute"));
     } catch (_error) {
       return false;
     }
@@ -168,9 +175,9 @@
       return {
         siteId: "gemini",
         hosts: Array.from(GEMINI_HOSTS),
-        generationRequestMatchers: [
-          { pathnameIncludes: STREAM_GENERATE_PATH_PART },
-        ],
+        generationRequestMatchers: GENERATION_PATH_PARTS
+          .map((part) => ({ pathnameIncludes: part }))
+          .concat([{ pathnameIncludes: "BardChatUi/data/batchexecute" }]),
         promptExtractor: "gemini",
       };
     }

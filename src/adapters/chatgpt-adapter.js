@@ -159,12 +159,16 @@
       if (!event || !PHASE_EVENT_TYPES[event.phase] || !isGenerationUrl(event.url)) {
         return null;
       }
-      return {
+      const normalized = {
         type: PHASE_EVENT_TYPES[event.phase],
         lifecycleId: event.lifecycleId || "",
         url: event.url || "",
         method: event.method || "",
       };
+      if (typeof event.promptExcerpt === "string" && event.promptExcerpt.trim()) {
+        normalized.promptExcerpt = event.promptExcerpt.trim();
+      }
+      return normalized;
     }
 
     return {

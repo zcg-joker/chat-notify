@@ -27,6 +27,19 @@
     "/backend-api/f/conversation",
     "/conversation",
   ]);
+  const PROMPT_EXCERPT_LIMIT = 40;
+
+  function createPromptExcerpt(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+    const normalized = value.replace(/\s+/g, " ").trim();
+    const characters = Array.from(normalized);
+    if (characters.length <= PROMPT_EXCERPT_LIMIT) {
+      return normalized;
+    }
+    return `${characters.slice(0, PROMPT_EXCERPT_LIMIT).join("")}...`;
+  }
 
   function getInputUrl(input) {
     if (typeof input === "string") {
@@ -63,10 +76,63 @@
       (init && init.method) ||
       (input && input.method) ||
       "GET";
-    return {
+    const meta = {
       url: normalizedUrl,
       method: String(method || "GET").toUpperCase(),
     };
+    const promptExcerpt = extractPromptExcerpt(input, init);
+    if (promptExcerpt) {
+      meta.promptExcerpt = promptExcerpt;
+    }
+    return meta;
+  }
+
+  function getRequestBody(input, init) {
+    if (init && typeof init.body === "string") {
+      return init.body;
+    }
+    if (input && typeof input.body === "string") {
+      return input.body;
+    }
+    return "";
+  }
+
+  function getContentText(content) {
+    if (!content || typeof content !== "object") {
+      return "";
+    }
+    if (Array.isArray(content.parts)) {
+      return content.parts.filter((part) => typeof part === "string").join("\n");
+    }
+    if (typeof content.text === "string") {
+      return content.text;
+    }
+    return "";
+  }
+
+  function extractPromptExcerpt(input, init) {
+    const body = getRequestBody(input, init);
+    if (!body || body.length > 200000) {
+      return "";
+    }
+
+    try {
+      const payload = JSON.parse(body);
+      const messages = Array.isArray(payload.messages) ? payload.messages : [];
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (!message || !message.author || message.author.role !== "user") {
+          continue;
+        }
+        const excerpt = createPromptExcerpt(getContentText(message.content));
+        if (excerpt) {
+          return excerpt;
+        }
+      }
+    } catch (_error) {
+      return "";
+    }
+    return "";
   }
 
   function postLifecycleEvent(detail) {
@@ -102,7 +168,12 @@
     }
 
     postLifecycleEvent(Object.assign({ lifecycleId, phase: "started" }, meta));
-    log("info", "lifecycle started", { lifecycleId, url: meta.url, method: meta.method });
+    log("info", "lifecycle started", {
+      lifecycleId,
+      url: meta.url,
+      method: meta.method,
+      promptExcerpt: meta.promptExcerpt || "",
+    });
 
     try {
       const response = await originalFetch.apply(this, arguments);

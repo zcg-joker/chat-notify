@@ -127,6 +127,7 @@ test("normalizes lifecycle events without forwarding body data", () => {
     phase: "completed",
     url: "https://chatgpt.com/backend-api/conversation",
     method: "POST",
+    promptExcerpt: "current prompt",
     headers: { authorization: "Bearer sensitive" },
     authorization: "Bearer sensitive",
     token: "sensitive",
@@ -139,6 +140,7 @@ test("normalizes lifecycle events without forwarding body data", () => {
     lifecycleId: "life-1",
     url: "https://chatgpt.com/backend-api/conversation",
     method: "POST",
+    promptExcerpt: "current prompt",
   });
   assert.equal(Object.hasOwn(event, "headers"), false);
   assert.equal(Object.hasOwn(event, "authorization"), false);

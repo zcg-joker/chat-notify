@@ -141,6 +141,16 @@
       const patch = {
         status: result.state,
       };
+      const record = tracker.get(sessionKey);
+
+      if (
+        record &&
+        !record.promptExcerpt &&
+        typeof lifecycleEvent.promptExcerpt === "string" &&
+        lifecycleEvent.promptExcerpt.trim()
+      ) {
+        patch.promptExcerpt = deps.createPromptExcerpt(lifecycleEvent.promptExcerpt);
+      }
 
       if (lifecycleEvent.lifecycleId) {
         patch.lifecycleId = lifecycleEvent.lifecycleId;

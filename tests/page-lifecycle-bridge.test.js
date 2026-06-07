@@ -86,6 +86,39 @@ test("normalizes relative generation request URLs before posting lifecycle event
   assert.equal(Object.hasOwn(bridge.details()[0], "body"), false);
 });
 
+test("extracts only a prompt excerpt from ChatGPT generation request body", async () => {
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+
+  await bridge.window.fetch("/backend-api/f/conversation", {
+    method: "POST",
+    body: JSON.stringify({
+      messages: [
+        {
+          author: { role: "user" },
+          content: { parts: ["previous question"] },
+        },
+        {
+          author: { role: "assistant" },
+          content: { parts: ["previous answer"] },
+        },
+        {
+          author: { role: "user" },
+          content: { parts: ["简单说一下迈阿密的气候、人口和旅行亮点，控制在三句话以内"] },
+        },
+      ],
+    }),
+  });
+
+  assert.equal(
+    bridge.details()[0].promptExcerpt,
+    "简单说一下迈阿密的气候、人口和旅行亮点，控制在三句话以内"
+  );
+  assert.equal(Object.hasOwn(bridge.details()[0], "body"), false);
+  assert.equal(Object.hasOwn(bridge.details()[0], "messages"), false);
+});
+
 test("observes generation requests passed as URL objects", async () => {
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 204 }),

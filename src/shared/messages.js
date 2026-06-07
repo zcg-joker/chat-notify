@@ -429,6 +429,60 @@
     };
   }
 
+  function createProbeHandoffSummary(currentPage, recommendation, probeComparison, adapterDraft) {
+    const host = cleanString(currentPage.host).toLowerCase() || "unknown host";
+    const status = cleanString(recommendation && recommendation.status) || "insufficient_evidence";
+    const summary = [`Probe handoff for ${host}: ${status}.`];
+    const primaryCandidate = recommendation && recommendation.primaryCandidate;
+    if (primaryCandidate) {
+      summary.push(
+        `Primary candidate: ${[
+          primaryCandidate.method,
+          `${primaryCandidate.host || host}${primaryCandidate.path || ""}`,
+          "via",
+          primaryCandidate.requestKind,
+        ].filter(Boolean).join(" ")}, score ${primaryCandidate.score || 0}, stability ${
+          primaryCandidate.stability || "unknown"
+        }.`
+      );
+    } else {
+      summary.push("Primary candidate: none yet.");
+    }
+
+    const coveredScenarios = probeComparison && Array.isArray(probeComparison.scenarioCoverage)
+      ? probeComparison.scenarioCoverage
+          .filter((entry) => entry && entry.sampleCount > 0 && entry.scenario)
+          .map((entry) => entry.scenario)
+      : [];
+    if (coveredScenarios.length) {
+      summary.push(`Covered scenarios: ${coveredScenarios.join(", ")}.`);
+    }
+
+    const missingScenarios = recommendation && Array.isArray(recommendation.missingScenarios)
+      ? recommendation.missingScenarios
+      : [];
+    if (missingScenarios.length) {
+      summary.push(`Missing scenarios: ${missingScenarios.join(", ")}.`);
+    }
+
+    const excludedPathnames = adapterDraft &&
+      adapterDraft.implementationNotes &&
+      adapterDraft.implementationNotes.lifecycle &&
+      Array.isArray(adapterDraft.implementationNotes.lifecycle.excludedPathnames)
+      ? adapterDraft.implementationNotes.lifecycle.excludedPathnames
+      : [];
+    if (excludedPathnames.length) {
+      summary.push(`Excluded stable noise: ${excludedPathnames.join(", ")}.`);
+    }
+
+    const nextActions = recommendation && Array.isArray(recommendation.nextActions) ? recommendation.nextActions : [];
+    if (nextActions.length) {
+      summary.push(`Next: ${nextActions[0]}`);
+    }
+    summary.push(adapterDraft ? "Adapter draft is available with implementationNotes." : "Adapter draft is not ready yet.");
+    return summary;
+  }
+
   function createStableAdapterDraft(currentPage, probeComparison) {
     const stableCandidates = probeComparison && Array.isArray(probeComparison.stableCandidates)
       ? probeComparison.stableCandidates
@@ -603,6 +657,7 @@
       },
       probeComparison,
       recommendation,
+      handoffSummary: createProbeHandoffSummary(currentPage, recommendation, probeComparison, adapterDraft),
       adapterDraft,
       latestFlow: null,
     };

@@ -241,6 +241,13 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
         "Run page probe for a long response.",
       ],
     },
+    handoffSummary: [
+      "Probe handoff for chatgpt.com: insufficient_evidence.",
+      "Primary candidate: none yet.",
+      "Missing scenarios: short_response, long_response.",
+      "Next: Run page probe for a short response.",
+      "Adapter draft is not ready yet.",
+    ],
     adapterDraft: null,
     latestFlow: {
       flowId: "chatgpt:1780761600000:1",
@@ -764,6 +771,14 @@ test("createProbeReport compares probe samples and highlights stable candidates"
       "Use the stable candidate as the first adapter matcher draft.",
     ],
   });
+  assert.deepEqual(report.handoffSummary, [
+    "Probe handoff for example.com: ready_for_adapter_draft.",
+    "Primary candidate: POST example.com/api/chat/stream via fetch, score 90, stability 2/2.",
+    "Covered scenarios: short_response, long_response.",
+    "Excluded stable noise: /api/prepare.",
+    "Next: Confirm the candidate stays active until visible completion.",
+    "Adapter draft is available with implementationNotes.",
+  ]);
   assert.deepEqual(report.adapterDraft, {
     host: "example.com",
     siteIdSuggestion: "example",
@@ -820,7 +835,7 @@ test("createProbeReport compares probe samples and highlights stable candidates"
     ],
   });
 
-  const serialized = JSON.stringify(report.adapterDraft);
+  const serialized = JSON.stringify(report);
   assert.equal(serialized.includes("token=secret"), false);
 });
 
@@ -891,6 +906,14 @@ test("createProbeReport recommends collecting missing key scenarios", () => {
       "Confirm the stable candidate appears in the missing scenarios.",
     ],
   });
+  assert.deepEqual(report.handoffSummary, [
+    "Probe handoff for example.com: collect_more_samples.",
+    "Primary candidate: POST example.com/api/chat/stream via fetch, score 90, stability 2/2.",
+    "Covered scenarios: short_response.",
+    "Missing scenarios: long_response.",
+    "Next: Run page probe for a long response.",
+    "Adapter draft is not ready yet.",
+  ]);
   assert.equal(report.adapterDraft, null);
 });
 

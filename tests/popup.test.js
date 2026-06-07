@@ -122,6 +122,7 @@ function runPopup({
           schemaVersion: 1,
           currentPage: input.currentPage,
           settings: input.settings,
+          handoffSummary: ["Probe handoff for chatgpt.com: insufficient_evidence."],
           popupStatus: input.popupStatus,
         };
       },
@@ -715,6 +716,9 @@ test("popup copies sanitized probe diagnostics report", async () => {
   assert.equal(copied.length, 1);
   assert.equal(JSON.parse(copied[0]).currentPage.host, "chatgpt.com");
   assert.equal(JSON.parse(copied[0]).settings.debugLogs, true);
+  assert.deepEqual(JSON.parse(copied[0]).handoffSummary, [
+    "Probe handoff for chatgpt.com: insufficient_evidence.",
+  ]);
   assert.equal(copied[0].includes("secret-conversation"), false);
   assert.equal(copied[0].includes("token=secret"), false);
   assert.equal(popup.elements["copy-diagnostics-status"].textContent, "Diagnostics copied");

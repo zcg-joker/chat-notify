@@ -35,6 +35,7 @@ The copied report is intentionally small and adapter-focused.
 - `recommendation.missingScenarios`: key probe scenarios still needed before drafting an adapter matcher.
 - `recommendation.primaryCandidate`: the strongest stable sanitized request candidate, when one exists.
 - `recommendation.nextActions`: concrete follow-up checks for the next probe or adapter-draft step.
+- `handoffSummary`: human-readable safe summary lines for quick issue triage and adapter handoff.
 - `adapterDraft`: a first-pass adapter draft generated from `probeComparison.stableCandidates`, only when `recommendation.status` is `ready_for_adapter_draft`.
 - `adapterDraft.excludedRequestCandidates`: stable ignored candidates to keep out of generation matchers.
 - `adapterDraft.implementationNotes`: structured adapter handoff notes for lifecycle matchers, prompt extraction, send detection, session keys, and edge-case checks.
@@ -113,6 +114,8 @@ The visible Recent activity timeline stays small, but the copied diagnostics rep
 Recent page-probe flows are also retained as bounded `probeSamples`. Each sample includes a sanitized scenario label from a fixed list, such as `short_response`, `long_response`, `tab_switch`, `same_tab_session_switch`, `canceled_generation`, or `failed_generation`. The copied report uses these samples to build `probeComparison`, including `stableCandidates` that appeared across multiple samples, `stableIgnoredCandidates` that repeatedly looked like noise, and `scenarioCoverage` that shows which key scenarios have retained evidence. Prefer stable candidates when choosing generation matchers, and use stable ignored candidates as an early exclusion list for telemetry, prepare, warmup, metadata, and other non-generation requests.
 
 Use `recommendation` as the first triage result for retained probe samples. `insufficient_evidence` means the report does not yet have enough samples to choose a matcher. `collect_more_samples` means a stable candidate exists, but key scenarios such as `short_response` or `long_response` still need evidence. `ready_for_adapter_draft` means the strongest stable candidate covers both short and long responses and is ready to become a first adapter matcher draft, after manual timing checks.
+
+Use `handoffSummary` when quickly reading copied diagnostics or pasting a compact issue note. It restates only sanitized host/path evidence, covered and missing scenarios, the first recommended next action, and whether an `adapterDraft` is ready. It is not a substitute for the structured fields, but it helps a maintainer decide whether the next step is more probing or adapter implementation.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 

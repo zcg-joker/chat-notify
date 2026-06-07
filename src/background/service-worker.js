@@ -39,10 +39,11 @@
   const DEFAULT_POPUP_STATUS = Object.freeze({
     notificationHealth: Object.freeze({ state: "not_tested", message: "", updatedAt: null }),
     lastCompletion: Object.freeze({ state: "none", siteId: "", updatedAt: null }),
-    diagnostics: Object.freeze({ latestFlow: null }),
+    diagnostics: Object.freeze({ latestFlow: null, probeSamples: Object.freeze([]) }),
   });
   const MAX_DIAGNOSTIC_EVENTS = 8;
   const MAX_REQUEST_CANDIDATES = 20;
+  const MAX_PROBE_SAMPLES = 5;
 
   function log(level, message, detail) {
     if (typeof console === "undefined" || typeof console[level] !== "function") {
@@ -132,6 +133,52 @@
     return withoutDuplicate.slice(-MAX_REQUEST_CANDIDATES);
   }
 
+  function cloneRequestCandidates(candidates) {
+    return Array.isArray(candidates)
+      ? candidates
+          .map(sanitizeDiagnosticRequest)
+          .filter(Boolean)
+          .slice(-MAX_REQUEST_CANDIDATES)
+      : [];
+  }
+
+  function cloneProbeSamples(samples) {
+    return Array.isArray(samples)
+      ? samples
+          .map((sample) => ({
+            flowId: sample && sample.flowId ? sample.flowId : "",
+            siteId: sample && sample.siteId ? sample.siteId : "",
+            displayName: sample && sample.displayName ? sample.displayName : "",
+            updatedAt: sample && Number.isFinite(sample.updatedAt) ? sample.updatedAt : null,
+            requestCandidates: cloneRequestCandidates(sample && sample.requestCandidates),
+          }))
+          .filter((sample) => sample.flowId)
+          .slice(-MAX_PROBE_SAMPLES)
+      : [];
+  }
+
+  function updateProbeSamples(existingSamples, flow) {
+    const samples = cloneProbeSamples(existingSamples);
+    if (!flow || flow.siteId !== "page-probe" || !flow.flowId) {
+      return samples;
+    }
+    const requestCandidates = cloneRequestCandidates(flow.requestCandidates);
+    if (!requestCandidates.length) {
+      return samples;
+    }
+    const nextSample = {
+      flowId: flow.flowId,
+      siteId: flow.siteId,
+      displayName: flow.displayName || "",
+      updatedAt: Number.isFinite(flow.updatedAt) ? flow.updatedAt : null,
+      requestCandidates,
+    };
+    return samples
+      .filter((sample) => sample.flowId !== nextSample.flowId)
+      .concat(nextSample)
+      .slice(-MAX_PROBE_SAMPLES);
+  }
+
   function createNotificationService(options = {}) {
     const chromeApi = options.chromeApi || globalThis.chrome;
     const now = typeof options.now === "function" ? options.now : () => Date.now();
@@ -186,13 +233,11 @@
                     })
                   : [],
                 requestCandidates: Array.isArray(source.diagnostics.latestFlow.requestCandidates)
-                  ? source.diagnostics.latestFlow.requestCandidates
-                      .map(sanitizeDiagnosticRequest)
-                      .filter(Boolean)
-                      .slice(-MAX_REQUEST_CANDIDATES)
+                  ? cloneRequestCandidates(source.diagnostics.latestFlow.requestCandidates)
                   : [],
               }
             : null,
+          probeSamples: cloneProbeSamples(source.diagnostics && source.diagnostics.probeSamples),
         },
       };
     }
@@ -430,10 +475,14 @@
           events: previousEvents.concat(event).slice(-MAX_DIAGNOSTIC_EVENTS),
           requestCandidates: appendRequestCandidate(previousRequestCandidates, request),
         };
+        const probeSamples = updateProbeSamples(
+          current.diagnostics && current.diagnostics.probeSamples,
+          latestFlow
+        );
         return {
           notificationHealth: current.notificationHealth,
           lastCompletion: current.lastCompletion,
-          diagnostics: { latestFlow },
+          diagnostics: { latestFlow, probeSamples },
         };
       });
     }

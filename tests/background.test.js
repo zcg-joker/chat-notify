@@ -12,7 +12,7 @@ const { createNotificationService } = require("../src/background/service-worker.
 const DEFAULT_POPUP_STATUS = {
   notificationHealth: { state: "not_tested", message: "", updatedAt: null },
   lastCompletion: { state: "none", siteId: "", updatedAt: null },
-  diagnostics: { latestFlow: null },
+  diagnostics: { latestFlow: null, probeSamples: [] },
 };
 
 function createFakeStorageArea(initial = {}) {
@@ -386,6 +386,96 @@ test("request probe candidates are bounded and de-duplicated by request metadata
     matched: true,
     reason: "probe_observed_request",
   });
+});
+
+test("page probe diagnostics retain recent probe samples for cross-run comparison", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:short",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_matched",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/chat/stream?token=secret",
+    matched: true,
+    reason: "probe_observed_request",
+  }));
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:short",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_matched",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/prepare?token=secret",
+    matched: true,
+    reason: "probe_observed_request",
+  }));
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:long",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_matched",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/chat/stream?token=secret",
+    matched: true,
+    reason: "probe_observed_request",
+  }));
+
+  assert.deepEqual(local.data.popupStatus.diagnostics.probeSamples, [
+    {
+      flowId: "probe:example.com:short",
+      siteId: "page-probe",
+      displayName: "Page Probe",
+      updatedAt: 1780761600000,
+      requestCandidates: [
+        {
+          requestKind: "fetch",
+          method: "POST",
+          host: "example.com",
+          path: "/api/chat/stream",
+          matched: true,
+          reason: "probe_observed_request",
+        },
+        {
+          requestKind: "fetch",
+          method: "POST",
+          host: "example.com",
+          path: "/api/prepare",
+          matched: true,
+          reason: "probe_observed_request",
+        },
+      ],
+    },
+    {
+      flowId: "probe:example.com:long",
+      siteId: "page-probe",
+      displayName: "Page Probe",
+      updatedAt: 1780761600000,
+      requestCandidates: [
+        {
+          requestKind: "fetch",
+          method: "POST",
+          host: "example.com",
+          path: "/api/chat/stream",
+          matched: true,
+          reason: "probe_observed_request",
+        },
+      ],
+    },
+  ]);
+  const serialized = JSON.stringify(local.data.popupStatus.diagnostics.probeSamples);
+  assert.equal(serialized.includes("token=secret"), false);
 });
 
 test("concurrent diagnostic events on one flow preserve both events", async () => {

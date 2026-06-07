@@ -25,6 +25,9 @@ The copied report is intentionally small and adapter-focused.
 - `currentPage.supported`: whether the popup recognizes the current page as supported.
 - `settings.enabled`: whether Chat Notify was enabled when the report was copied.
 - `settings.debugLogs`: whether debug logs were enabled.
+- `probeComparison.sampleCount`: number of retained page-probe samples available for cross-run comparison.
+- `probeComparison.stableCandidates`: sanitized request candidates that appeared in at least two retained probe samples.
+- `probeComparison.sampleSummaries`: compact flow id, candidate count, and update time for each retained sample.
 - `latestFlow.siteId`: the adapter that handled the latest observed flow.
 - `latestFlow.promptExcerpt`: a short sanitized prompt excerpt.
 - `latestFlow.summary.totalEvents`: number of stored diagnostic events.
@@ -96,6 +99,8 @@ The page probe uses Chrome's `activeTab` and `scripting` permissions to inject t
 The unsupported-site adapter is probe-only. It records sanitized same-host fetch, XHR, EventSource, and WebSocket request probes, but it does not inspect WebSocket/EventSource message contents, normalize lifecycle events, start response monitoring, or send completion notifications. Its job is to reveal candidate request paths and methods for a future real adapter.
 
 The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
+
+Recent page-probe flows are also retained as bounded `probeSamples`. The copied report uses them to build `probeComparison`, including `stableCandidates` that appeared across multiple samples. Prefer stable candidates when choosing generation matchers, especially after collecting short response, long response, tab-switch, and cancellation samples.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 

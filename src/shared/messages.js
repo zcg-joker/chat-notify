@@ -151,6 +151,87 @@
       .slice(0, 5);
   }
 
+  function requestCandidateKey(request) {
+    return [
+      request.requestKind,
+      request.method,
+      request.host,
+      request.path,
+      request.matched ? "matched" : "ignored",
+      request.reason,
+    ].join("\u0000");
+  }
+
+  function createProbeComparison(samples) {
+    const sanitizedSamples = Array.isArray(samples)
+      ? samples
+          .map((sample) => ({
+            flowId: cleanString(sample && sample.flowId),
+            updatedAt: Number.isFinite(sample && sample.updatedAt) ? sample.updatedAt : null,
+            requestCandidates: Array.isArray(sample && sample.requestCandidates)
+              ? sample.requestCandidates.map(sanitizeRequestProbe).filter(Boolean)
+              : [],
+          }))
+          .filter((sample) => sample.flowId)
+      : [];
+    const sampleCount = sanitizedSamples.length;
+    if (!sampleCount) {
+      return {
+        sampleCount: 0,
+        stableCandidates: [],
+        sampleSummaries: [],
+      };
+    }
+
+    const candidateByKey = new Map();
+    sanitizedSamples.forEach((sample) => {
+      const keysInSample = new Set();
+      sample.requestCandidates.forEach((candidate) => {
+        if (!candidate.matched) {
+          return;
+        }
+        const key = requestCandidateKey(candidate);
+        if (keysInSample.has(key)) {
+          return;
+        }
+        keysInSample.add(key);
+        const existing = candidateByKey.get(key) || { candidate, sampleCount: 0 };
+        existing.sampleCount += 1;
+        candidateByKey.set(key, existing);
+      });
+    });
+
+    const stableCandidates = Array.from(candidateByKey.values())
+      .filter((entry) => entry.sampleCount >= 2)
+      .map((entry) => {
+        const scored = scoreGenerationCandidate(entry.candidate);
+        return Object.assign({}, scored, {
+          sampleCount: entry.sampleCount,
+          stability: `${entry.sampleCount}/${sampleCount}`,
+        });
+      })
+      .sort((left, right) => {
+        if (right.sampleCount !== left.sampleCount) {
+          return right.sampleCount - left.sampleCount;
+        }
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return left.path.localeCompare(right.path);
+      })
+      .slice(0, 5);
+
+    return {
+      sampleCount,
+      stableCandidates,
+      sampleSummaries: sanitizedSamples.map((sample) => ({
+        flowId: sample.flowId,
+        candidateCount: sample.requestCandidates.length,
+        updatedAt: sample.updatedAt,
+      })),
+    };
+  }
+
   function createSuggestionId(host) {
     const firstLabel = cleanString(host).toLowerCase().split(".").find(Boolean) || "site";
     return firstLabel.replace(/[^a-z0-9_-]/g, "") || "site";
@@ -297,6 +378,7 @@
     );
     const currentPage = input.currentPage || {};
     const settings = input.settings || {};
+    const probeComparison = createProbeComparison(diagnostics.probeSamples);
     const report = {
       schemaVersion: 1,
       generatedAt: Number.isFinite(input.generatedAt) ? input.generatedAt : Date.now(),
@@ -308,6 +390,7 @@
         enabled: Boolean(settings.enabled),
         debugLogs: Boolean(settings.debugLogs),
       },
+      probeComparison,
       latestFlow: null,
     };
 

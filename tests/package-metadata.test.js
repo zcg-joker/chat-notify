@@ -162,6 +162,9 @@ test("adapter probe workflow explains capture, interpretation, and privacy bound
   assert.match(workflow, /scripting/);
   assert.match(workflow, /probe-only/i);
   assert.match(workflow, /requestCandidates/);
+  assert.match(workflow, /probeSamples/);
+  assert.match(workflow, /probeComparison/);
+  assert.match(workflow, /stableCandidates/);
   assert.match(workflow, /likelyGenerationCandidates/);
   assert.match(workflow, /adapterDraft/);
   assert.match(workflow, /analysis/);

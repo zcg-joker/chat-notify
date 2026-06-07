@@ -217,6 +217,11 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
       enabled: true,
       debugLogs: true,
     },
+    probeComparison: {
+      sampleCount: 0,
+      stableCandidates: [],
+      sampleSummaries: [],
+    },
     latestFlow: {
       flowId: "chatgpt:1780761600000:1",
       siteId: "chatgpt",
@@ -578,6 +583,124 @@ test("createProbeReport includes an adapter readiness analysis", () => {
   const serialized = JSON.stringify(report.latestFlow.analysis);
   assert.equal(serialized.includes("token=secret"), false);
   assert.equal(serialized.includes("conversation=secret"), false);
+});
+
+test("createProbeReport compares probe samples and highlights stable candidates", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: false,
+      host: "example.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: false,
+    },
+    popupStatus: {
+      diagnostics: {
+        latestFlow: {
+          flowId: "probe:example.com:long",
+          siteId: "page-probe",
+          displayName: "Page Probe",
+          updatedAt: 1780761602000,
+          requestCandidates: [
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/chat/stream?token=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+          ],
+          events: [],
+        },
+        probeSamples: [
+          {
+            flowId: "probe:example.com:short",
+            siteId: "page-probe",
+            displayName: "Page Probe",
+            updatedAt: 1780761601000,
+            requestCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream?token=secret",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/prepare?token=secret",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+            ],
+          },
+          {
+            flowId: "probe:example.com:long",
+            siteId: "page-probe",
+            displayName: "Page Probe",
+            updatedAt: 1780761602000,
+            requestCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream?token=secret",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/telemetry?token=secret",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(report.probeComparison, {
+    sampleCount: 2,
+    stableCandidates: [
+      {
+        requestKind: "fetch",
+        method: "POST",
+        host: "example.com",
+        path: "/api/chat/stream",
+        matched: true,
+        reason: "probe_observed_request",
+        sampleCount: 2,
+        stability: "2/2",
+        score: 90,
+        signals: ["post_method", "generation_path", "stream_path", "chat_path"],
+      },
+    ],
+    sampleSummaries: [
+      {
+        flowId: "probe:example.com:short",
+        candidateCount: 2,
+        updatedAt: 1780761601000,
+      },
+      {
+        flowId: "probe:example.com:long",
+        candidateCount: 2,
+        updatedAt: 1780761602000,
+      },
+    ],
+  });
+
+  const serialized = JSON.stringify(report.probeComparison);
+  assert.equal(serialized.includes("token=secret"), false);
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

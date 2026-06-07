@@ -45,7 +45,14 @@
       sessionKey: event.sessionKey,
       promptExcerpt: event.promptExcerpt,
     });
-    chrome.runtime.sendMessage(api.createResponseCompletedMessage(event));
+    chrome.runtime.sendMessage(api.createResponseCompletedMessage(event), (response) => {
+      const lastError = chrome.runtime && chrome.runtime.lastError;
+      if (lastError) {
+        log("warn", "completion message failed", lastError.message || String(lastError));
+        return;
+      }
+      log("info", "completion message acknowledged", response);
+    });
   }
 
   function installLifecycleBridge() {

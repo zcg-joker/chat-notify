@@ -38,7 +38,7 @@ function createFakeDocument() {
   return { document, listeners, scripts };
 }
 
-function createContentScriptContext({ enabled = true, supported = true } = {}) {
+function createContentScriptContext({ enabled = true, supported = true, consoleApi = console } = {}) {
   const source = fs.readFileSync(CONTENT_SCRIPT_PATH, "utf8");
   const documentFixture = createFakeDocument();
   const sentMessages = [];
@@ -95,8 +95,11 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
   const chrome = {
     runtime: {
       getURL: (resourcePath) => `chrome-extension://test/${resourcePath}`,
-      sendMessage(message) {
+      sendMessage(message, callback) {
         sentMessages.push(message);
+        if (callback) {
+          callback({ ok: true, notificationId: "notification-id" });
+        }
       },
     },
     storage: {
@@ -117,6 +120,7 @@ function createContentScriptContext({ enabled = true, supported = true } = {}) {
     chrome,
     document: documentFixture.document,
     window,
+    console: consoleApi,
     globalThis: null,
   };
   context.globalThis = context;
@@ -247,4 +251,28 @@ test("sends completion messages through runtime messaging", () => {
       },
     },
   ]);
+});
+
+test("logs runtime response after sending completion message", () => {
+  const logs = [];
+  const context = createContentScriptContext({
+    consoleApi: {
+      info(prefix, message, detail) {
+        logs.push({ prefix, message, detail });
+      },
+      warn() {},
+      debug() {},
+    },
+  });
+
+  context.getControllerOptions().onCompleted({
+    siteId: "chatgpt",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Prompt",
+  });
+
+  assert.deepEqual(logs.find((entry) => entry.message === "completion message acknowledged").detail, {
+    ok: true,
+    notificationId: "notification-id",
+  });
 });

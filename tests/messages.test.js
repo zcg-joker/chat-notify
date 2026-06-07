@@ -94,6 +94,49 @@ test("createDiagnosticEventMessage sanitizes diagnostic payload", () => {
   assert.equal(serialized.includes("private answer"), false);
 });
 
+test("createDiagnosticEventMessage keeps sanitized request probe metadata only", () => {
+  const message = createDiagnosticEventMessage({
+    flowId: "gemini:1780761600000:1",
+    siteId: "gemini",
+    displayName: "Gemini",
+    eventType: "request_probe_matched",
+    requestKind: "xhr",
+    method: " post ",
+    host: " gemini.google.com ",
+    path: " /_/BardChatUi/data/batchexecute?rpcids=secret ",
+    matched: true,
+    reason: " matched_generation_request ",
+    url: "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=secret",
+    body: "prompt and token",
+    headers: { authorization: "Bearer token" },
+  });
+
+  assert.deepEqual(message, {
+    type: MESSAGE_TYPES.DIAGNOSTIC_EVENT,
+    payload: {
+      flowId: "gemini:1780761600000:1",
+      siteId: "gemini",
+      displayName: "Gemini",
+      promptExcerpt: "",
+      eventType: "request_probe_matched",
+      status: "ok",
+      message: "",
+      request: {
+        requestKind: "xhr",
+        method: "POST",
+        host: "gemini.google.com",
+        path: "/_/BardChatUi/data/batchexecute",
+        matched: true,
+        reason: "matched_generation_request",
+      },
+    },
+  });
+  const serialized = JSON.stringify(message);
+  assert.equal(serialized.includes("rpcids=secret"), false);
+  assert.equal(serialized.includes("prompt and token"), false);
+  assert.equal(serialized.includes("Bearer token"), false);
+});
+
 test("createTestNotificationMessage uses the expected type", () => {
   assert.deepEqual(createTestNotificationMessage(), {
     type: MESSAGE_TYPES.TEST_NOTIFICATION,

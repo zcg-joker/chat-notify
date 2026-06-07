@@ -107,27 +107,54 @@
     return false;
   }
 
-  function getNormalizedUrl(input) {
+  function inspectRequest(input) {
     if (!bridgeConfig) {
-      return "";
+      return null;
     }
     const url = getInputUrl(input);
     if (!url) {
-      return "";
+      return null;
     }
 
     try {
       const parsed = new URL(url, window.location.href);
       if (!bridgeConfig.hosts.includes(parsed.hostname)) {
-        return "";
+        return {
+          host: parsed.hostname,
+          path: parsed.pathname,
+          matched: false,
+          reason: "host_not_matched",
+          normalizedUrl: "",
+        };
       }
       if (!bridgeConfig.generationRequestMatchers.some((matcher) => matcherMatchesPath(matcher, parsed.pathname))) {
-        return "";
+        return {
+          host: parsed.hostname,
+          path: parsed.pathname,
+          matched: false,
+          reason: "path_not_matched",
+          normalizedUrl: "",
+        };
       }
-      return `${parsed.origin}${parsed.pathname}`;
+      return {
+        host: parsed.hostname,
+        path: parsed.pathname,
+        matched: true,
+        reason: "matched_generation_request",
+        normalizedUrl: `${parsed.origin}${parsed.pathname}`,
+      };
     } catch (_error) {
-      return "";
+      return null;
     }
+  }
+
+  function getNormalizedUrl(input) {
+    const inspected = inspectRequest(input);
+    return inspected && inspected.matched ? inspected.normalizedUrl : "";
+  }
+
+  function getRequestMethod(input, init) {
+    return String((init && init.method) || (input && input.method) || "GET").toUpperCase();
   }
 
   function getRequestMeta(input, init, normalizedUrl) {
@@ -145,6 +172,22 @@
       meta.promptExcerpt = promptExcerpt;
     }
     return meta;
+  }
+
+  function postRequestProbe(requestKind, input, init, inspected) {
+    if (!debugLogs || !bridgeConfig || !inspected || !bridgeConfig.hosts.includes(inspected.host)) {
+      return;
+    }
+    postLifecycleEvent({
+      eventType: "request_probe",
+      siteId: bridgeConfig.siteId,
+      requestKind,
+      method: getRequestMethod(input, init),
+      host: inspected.host,
+      path: inspected.path,
+      matched: inspected.matched,
+      reason: inspected.reason,
+    });
   }
 
   function getRequestBody(input, init) {
@@ -331,7 +374,9 @@
         method: this.__chatNotifyRequestMethod,
         body,
       };
-      const normalizedUrl = getNormalizedUrl(input);
+      const inspected = inspectRequest(input);
+      postRequestProbe("xhr", input, init, inspected);
+      const normalizedUrl = inspected && inspected.matched ? inspected.normalizedUrl : "";
       if (!normalizedUrl) {
         return originalSend.apply(this, arguments);
       }
@@ -385,7 +430,9 @@
   installXMLHttpRequestObserver();
 
   window.fetch = async function chatNotifyFetch(input, init) {
-    const normalizedUrl = getNormalizedUrl(input);
+    const inspected = inspectRequest(input);
+    postRequestProbe("fetch", input, init, inspected);
+    const normalizedUrl = inspected && inspected.matched ? inspected.normalizedUrl : "";
     if (!normalizedUrl) {
       const rawUrl = getInputUrl(input);
       if (rawUrl && String(rawUrl).includes("conversation")) {

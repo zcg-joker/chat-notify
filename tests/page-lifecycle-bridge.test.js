@@ -250,6 +250,60 @@ test("writes lifecycle bridge logs only after debug logs are enabled", async () 
   );
 });
 
+test("posts sanitized request probe events when debug logs are enabled", async () => {
+  const bridge = createBridgeWindow({
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  installChatGptBridgeConfig(bridge);
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+      debugLogs: true,
+    },
+  });
+
+  await bridge.window.fetch("/backend-api/f/conversation?token=secret", {
+    method: "POST",
+    headers: { authorization: "Bearer secret" },
+    body: "private body",
+  });
+  await bridge.window.fetch("/backend-api/not-conversation?token=secret", {
+    method: "POST",
+    body: "private body",
+  });
+
+  const probes = bridge.details().filter((detail) => detail.eventType === "request_probe");
+
+  assert.deepEqual(JSON.parse(JSON.stringify(probes)), [
+    {
+      eventType: "request_probe",
+      siteId: "chatgpt",
+      requestKind: "fetch",
+      method: "POST",
+      host: "chatgpt.com",
+      path: "/backend-api/f/conversation",
+      matched: true,
+      reason: "matched_generation_request",
+    },
+    {
+      eventType: "request_probe",
+      siteId: "chatgpt",
+      requestKind: "fetch",
+      method: "POST",
+      host: "chatgpt.com",
+      path: "/backend-api/not-conversation",
+      matched: false,
+      reason: "path_not_matched",
+    },
+  ]);
+  const serialized = JSON.stringify(probes);
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("private body"), false);
+  assert.equal(serialized.includes("Bearer secret"), false);
+});
+
 test("observes generation requests passed as URL objects", async () => {
   const bridge = createBridgeWindow({
     fetchImpl: async () => new Response(null, { status: 204 }),
@@ -599,7 +653,7 @@ test("logs only one terminal XHR lifecycle phase", () => {
   const terminalLifecycleLogs = logs.filter((entry) => /^lifecycle (completed|failed|canceled): xhr/.test(entry.message));
   assert.deepEqual(terminalLifecycleLogs.map((entry) => entry.message), ["lifecycle canceled: xhr abort"]);
   assert.deepEqual(
-    bridge.details().map((detail) => detail.phase),
+    bridge.details().filter((detail) => detail.phase).map((detail) => detail.phase),
     ["started", "canceled"]
   );
 });

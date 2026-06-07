@@ -116,12 +116,25 @@
                   ? source.diagnostics.latestFlow.updatedAt
                   : null,
                 events: Array.isArray(source.diagnostics.latestFlow.events)
-                  ? source.diagnostics.latestFlow.events.slice(-MAX_DIAGNOSTIC_EVENTS).map((event) => ({
-                      eventType: event.eventType || "",
-                      status: event.status === "failed" ? "failed" : "ok",
-                      message: event.message || "",
-                      updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
-                    }))
+                  ? source.diagnostics.latestFlow.events.slice(-MAX_DIAGNOSTIC_EVENTS).map((event) => {
+                      const clonedEvent = {
+                        eventType: event.eventType || "",
+                        status: event.status === "failed" ? "failed" : "ok",
+                        message: event.message || "",
+                        updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
+                      };
+                      if (event.request && typeof event.request === "object") {
+                        clonedEvent.request = {
+                          requestKind: event.request.requestKind || "",
+                          method: event.request.method || "",
+                          host: event.request.host || "",
+                          path: event.request.path || "",
+                          matched: Boolean(event.request.matched),
+                          reason: event.request.reason || "",
+                        };
+                      }
+                      return clonedEvent;
+                    })
                   : [],
               }
             : null,
@@ -281,6 +294,16 @@
           message: payload.message || "",
           updatedAt: now(),
         };
+        if (payload.request && typeof payload.request === "object") {
+          event.request = {
+            requestKind: payload.request.requestKind || "",
+            method: payload.request.method || "",
+            host: payload.request.host || "",
+            path: payload.request.path || "",
+            matched: Boolean(payload.request.matched),
+            reason: payload.request.reason || "",
+          };
+        }
         const sameFlow = currentFlow && currentFlow.flowId === (payload.flowId || "");
         const previousEvents = sameFlow && Array.isArray(currentFlow.events) ? currentFlow.events : [];
         const latestFlow = {

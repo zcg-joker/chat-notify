@@ -97,9 +97,8 @@ function createContentScriptContext({
       };
     },
     createResponseCompletedMessage: (event) => ({ type: "AI_RESPONSE_COMPLETED", payload: event }),
-    createDiagnosticEventMessage: (event) => ({
-      type: "DIAGNOSTIC_EVENT",
-      payload: {
+    createDiagnosticEventMessage: (event) => {
+      const payload = {
         flowId: event.flowId || "",
         siteId: event.siteId || "",
         displayName: event.displayName || "",
@@ -107,8 +106,20 @@ function createContentScriptContext({
         eventType: event.eventType || "",
         status: event.status === "failed" ? "failed" : "ok",
         message: typeof event.message === "string" ? event.message.split("\n")[0].trim() : "",
-      },
-    }),
+      };
+      const request = event.request || event;
+      if (request.requestKind || request.method || request.host || request.path || request.reason) {
+        Object.assign(payload, {
+          requestKind: request.requestKind || "",
+          method: request.method || "",
+          host: request.host || "",
+          path: request.path || "",
+          matched: Boolean(request.matched),
+          reason: request.reason || "",
+        });
+      }
+      return { type: "DIAGNOSTIC_EVENT", payload };
+    },
   }, extraApi);
   const window = {
     location: new URL(location),
@@ -388,6 +399,48 @@ test("sends diagnostics for send and lifecycle events without session keys", () 
   const serialized = JSON.stringify(diagnostics);
   assert.equal(serialized.includes("conversation:a"), false);
   assert.equal(serialized.includes("chatgpt.com/c/private"), false);
+});
+
+test("forwards request probe events as diagnostics without touching lifecycle state", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        eventType: "request_probe",
+        siteId: "chatgpt",
+        requestKind: "fetch",
+        method: "POST",
+        host: "chatgpt.com",
+        path: "/backend-api/f/conversation",
+        matched: true,
+        reason: "matched_generation_request",
+        url: "https://chatgpt.com/backend-api/f/conversation?token=secret",
+      },
+    },
+  });
+
+  const diagnostics = context.sentMessages.filter((message) => message.type === "DIAGNOSTIC_EVENT");
+  assert.equal(context.controllerCalls.handleLifecycleEvent.length, 0);
+  assert.deepEqual(diagnostics.at(-1).payload, {
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "",
+    eventType: "request_probe_matched",
+    status: "ok",
+    message: "fetch POST chatgpt.com/backend-api/f/conversation matched_generation_request",
+    requestKind: "fetch",
+    method: "POST",
+    host: "chatgpt.com",
+    path: "/backend-api/f/conversation",
+    matched: true,
+    reason: "matched_generation_request",
+  });
+  assert.equal(JSON.stringify(diagnostics).includes("token=secret"), false);
 });
 
 test("can notify from a lifecycle message without waiting for interval tick", () => {

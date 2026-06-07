@@ -257,6 +257,55 @@ test("popup renders Gemini recent activity timeline from diagnostics", () => {
   );
 });
 
+test("popup renders request probe diagnostics", () => {
+  const popup = runPopup({
+    tabUrl: "https://gemini.google.com/app",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: {
+            siteId: "gemini",
+            displayName: "Gemini",
+            events: [
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "xhr",
+                  method: "POST",
+                  host: "gemini.google.com",
+                  path: "/_/BardChatUi/data/other",
+                  matched: false,
+                  reason: "path_not_matched",
+                },
+              },
+              {
+                eventType: "request_probe_matched",
+                request: {
+                  requestKind: "xhr",
+                  method: "POST",
+                  host: "gemini.google.com",
+                  path: "/_/BardChatUi/data/batchexecute",
+                  matched: true,
+                  reason: "matched_generation_request",
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Request matched");
+  assert.equal(
+    popup.elements["activity-timeline"].textContent,
+    "Request ignored (xhr POST gemini.google.com/_/BardChatUi/data/other) -> Request matched (xhr POST gemini.google.com/_/BardChatUi/data/batchexecute)",
+  );
+});
+
 test("popup renders unknown diagnostics event types with a neutral label", () => {
   const popup = runPopup({
     statusResponse: {

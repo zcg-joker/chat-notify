@@ -213,6 +213,51 @@ test("records diagnostic events in popup status without raw session metadata", a
   assert.equal(serialized.includes("https://chatgpt.com"), false);
 });
 
+test("records sanitized request probe diagnostics", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "gemini:1780761600000:1",
+    siteId: "gemini",
+    displayName: "Gemini",
+    eventType: "request_probe_matched",
+    requestKind: "xhr",
+    method: "POST",
+    host: "gemini.google.com",
+    path: "/_/BardChatUi/data/batchexecute?rpcids=secret",
+    matched: true,
+    reason: "matched_generation_request",
+    url: "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=secret",
+    body: "private body",
+    headers: { authorization: "Bearer token" },
+  }));
+
+  assert.deepEqual(local.data.popupStatus.diagnostics.latestFlow.events, [
+    {
+      eventType: "request_probe_matched",
+      status: "ok",
+      message: "",
+      updatedAt: 1780761600000,
+      request: {
+        requestKind: "xhr",
+        method: "POST",
+        host: "gemini.google.com",
+        path: "/_/BardChatUi/data/batchexecute",
+        matched: true,
+        reason: "matched_generation_request",
+      },
+    },
+  ]);
+  const serialized = JSON.stringify(local.data.popupStatus);
+  assert.equal(serialized.includes("rpcids=secret"), false);
+  assert.equal(serialized.includes("private body"), false);
+  assert.equal(serialized.includes("Bearer token"), false);
+});
+
 test("diagnostic events are bounded to the latest eight events", async () => {
   let time = 1780761600000;
   const local = createFakeStorageArea();

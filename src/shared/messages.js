@@ -31,6 +31,37 @@
     return `${characters.slice(0, safeLimit).join("")}...`;
   }
 
+  function sanitizePath(value) {
+    const raw = cleanString(value);
+    if (!raw) {
+      return "";
+    }
+    try {
+      return new URL(raw, "https://example.invalid").pathname;
+    } catch (_error) {
+      return raw.split("?")[0].split("#")[0];
+    }
+  }
+
+  function sanitizeRequestProbe(input = {}) {
+    const requestKind = cleanString(input.requestKind).toLowerCase();
+    const method = cleanString(input.method).toUpperCase();
+    const host = cleanString(input.host).toLowerCase();
+    const path = sanitizePath(input.path);
+    const reason = cleanString(input.reason);
+    if (!requestKind && !method && !host && !path && !reason) {
+      return null;
+    }
+    return {
+      requestKind,
+      method,
+      host,
+      path,
+      matched: Boolean(input.matched),
+      reason,
+    };
+  }
+
   function createResponseCompletedMessage(input = {}) {
     return {
       type: MESSAGE_TYPES.AI_RESPONSE_COMPLETED,
@@ -47,7 +78,7 @@
   }
 
   function createDiagnosticEventMessage(input = {}) {
-    return {
+    const payload = {
       type: MESSAGE_TYPES.DIAGNOSTIC_EVENT,
       payload: {
         flowId: cleanString(input.flowId),
@@ -59,6 +90,11 @@
         message: typeof input.message === "string" ? input.message.split("\n")[0].trim() : "",
       },
     };
+    const request = sanitizeRequestProbe(input.request || input);
+    if (request) {
+      payload.payload.request = request;
+    }
+    return payload;
   }
 
   function createTestNotificationMessage() {

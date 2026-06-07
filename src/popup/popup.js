@@ -22,6 +22,8 @@
     notification_failed: "Notification failed",
     notification_focus_succeeded: "Notification focused",
     notification_focus_failed: "Focus failed",
+    request_probe_matched: "Request matched",
+    request_probe_ignored: "Request ignored",
   };
 
   function shortError(value) {
@@ -63,7 +65,20 @@
 
   function activityLabel(event) {
     const eventType = event && (event.eventType || event.type);
-    return ACTIVITY_LABELS[eventType] || "Unknown event";
+    const label = ACTIVITY_LABELS[eventType] || "Unknown event";
+    const request = event && event.request;
+    if (
+      (eventType === "request_probe_matched" || eventType === "request_probe_ignored") &&
+      request &&
+      (request.requestKind || request.method || request.host || request.path)
+    ) {
+      return `${label} (${[
+        request.requestKind,
+        request.method,
+        `${request.host || ""}${request.path || ""}`,
+      ].filter(Boolean).join(" ")})`;
+    }
+    return label;
   }
 
   function renderDiagnostics(diagnostics) {
@@ -79,7 +94,7 @@
       return;
     }
 
-    activitySummary.textContent = labels[labels.length - 1];
+    activitySummary.textContent = activityLabel(events[events.length - 1]).replace(/\s+\(.+\)$/, "");
     activitySite.textContent = flow.displayName || flow.siteId || "";
     activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";
     activityTimeline.textContent = labels.join(" -> ");

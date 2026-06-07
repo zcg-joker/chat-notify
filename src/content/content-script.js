@@ -225,6 +225,29 @@
       return;
     }
 
+    if (data.detail && data.detail.eventType === "request_probe") {
+      const request = {
+        requestKind: data.detail.requestKind || "",
+        method: data.detail.method || "",
+        host: data.detail.host || "",
+        path: data.detail.path || "",
+        matched: Boolean(data.detail.matched),
+        reason: data.detail.reason || "",
+      };
+      const message = [
+        request.requestKind,
+        request.method,
+        `${request.host}${request.path}`,
+        request.reason,
+      ].filter(Boolean).join(" ");
+      sendDiagnosticEvent({
+        eventType: request.matched ? "request_probe_matched" : "request_probe_ignored",
+        message,
+        request,
+      });
+      return;
+    }
+
     const normalized = adapter.normalizeLifecycleEvent(data.detail);
     if (normalized) {
       const diagnosticEventType = diagnosticTypeByLifecycleType[normalized.type];

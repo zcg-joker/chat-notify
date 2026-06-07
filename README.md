@@ -47,6 +47,8 @@ npm run package
 
 The package script creates a clean extension zip under `dist/` for GitHub Releases. Maintainers should follow the [Release guide](docs/RELEASE.md).
 
+The generated zip has `manifest.json` at the archive root so the unzipped folder can be selected directly with "Load unpacked".
+
 ## Privacy
 
 Chat Notify does not upload, sync, or persist chat content. It does not use analytics, external servers, or cloud sync.

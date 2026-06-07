@@ -61,3 +61,34 @@ test("package zip contains runtime files and excludes development files", () => 
   assert.equal(entries.some((entry) => entry.startsWith(".git/")), false);
   assert.equal(entries.some((entry) => entry.includes(".DS_Store")), false);
 });
+
+test("packaged manifest is valid and references files included in the artifact", () => {
+  if (!fs.existsSync(ZIP_PATH)) {
+    const result = spawnSync("npm", ["run", "package"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  }
+
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(EXTENSION_DIR, "manifest.json"), "utf8")
+  );
+  const entries = new Set(listZipEntries(ZIP_PATH));
+
+  assert.equal(manifest.manifest_version, 3);
+  assert.equal(entries.has(manifest.background.service_worker), true);
+  assert.equal(entries.has(manifest.action.default_popup), true);
+
+  for (const iconPath of Object.values(manifest.icons)) {
+    assert.equal(entries.has(iconPath), true);
+  }
+
+  for (const scriptPath of manifest.content_scripts[0].js) {
+    assert.equal(entries.has(scriptPath), true);
+  }
+
+  for (const resource of manifest.web_accessible_resources[0].resources) {
+    assert.equal(entries.has(resource), true);
+  }
+});

@@ -34,6 +34,14 @@ dist/chat-notify-0.1.0-alpha.1.zip
 
 ## Inspect The Zip
 
+List the artifact contents:
+
+```bash
+unzip -Z1 dist/chat-notify-0.1.0-alpha.1.zip
+```
+
+The output should list paths without a leading `dist/extension/` prefix. `manifest.json` should be at the zip root.
+
 Confirm the zip contains extension runtime files such as:
 
 - `manifest.json`

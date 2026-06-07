@@ -221,6 +221,14 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
       sampleCount: 0,
       stableCandidates: [],
       sampleSummaries: [],
+      scenarioCoverage: [
+        { scenario: "short_response", sampleCount: 0, latestUpdatedAt: null },
+        { scenario: "long_response", sampleCount: 0, latestUpdatedAt: null },
+        { scenario: "tab_switch", sampleCount: 0, latestUpdatedAt: null },
+        { scenario: "same_tab_session_switch", sampleCount: 0, latestUpdatedAt: null },
+        { scenario: "canceled_generation", sampleCount: 0, latestUpdatedAt: null },
+        { scenario: "failed_generation", sampleCount: 0, latestUpdatedAt: null },
+      ],
     },
     recommendation: {
       status: "insufficient_evidence",
@@ -711,6 +719,14 @@ test("createProbeReport compares probe samples and highlights stable candidates"
         candidateCount: 2,
         updatedAt: 1780761602000,
       },
+    ],
+    scenarioCoverage: [
+      { scenario: "short_response", sampleCount: 1, latestUpdatedAt: 1780761601000 },
+      { scenario: "long_response", sampleCount: 1, latestUpdatedAt: 1780761602000 },
+      { scenario: "tab_switch", sampleCount: 0, latestUpdatedAt: null },
+      { scenario: "same_tab_session_switch", sampleCount: 0, latestUpdatedAt: null },
+      { scenario: "canceled_generation", sampleCount: 0, latestUpdatedAt: null },
+      { scenario: "failed_generation", sampleCount: 0, latestUpdatedAt: null },
     ],
   });
   assert.deepEqual(report.recommendation, {

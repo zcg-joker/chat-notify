@@ -117,6 +117,16 @@
     ].filter(Boolean).join(" ");
   }
 
+  function formatScenarioCoverage(comparison) {
+    const scenarioCoverage = comparison && Array.isArray(comparison.scenarioCoverage)
+      ? comparison.scenarioCoverage
+      : [];
+    const coveredScenarios = scenarioCoverage
+      .filter((entry) => entry && entry.sampleCount > 0 && entry.scenario)
+      .map((entry) => entry.scenario);
+    return coveredScenarios.length ? `Covered: ${coveredScenarios.join(", ")}` : "";
+  }
+
   function renderProbePreview(diagnostics) {
     const recommendation = diagnostics && diagnostics.recommendation;
     if (recommendation && recommendation.status) {
@@ -151,9 +161,10 @@
       probeTopCandidate.textContent = `Stable: ${formatCandidate(stableCandidate)} (score ${
         stableCandidate.score || 0
       }, ${stableCandidate.stability || "stable"})`;
-      probeRisk.textContent = Number.isFinite(comparison.sampleCount)
-        ? `Samples: ${comparison.sampleCount}`
-        : "";
+      probeRisk.textContent = [
+        Number.isFinite(comparison.sampleCount) ? `Samples: ${comparison.sampleCount}` : "",
+        formatScenarioCoverage(comparison),
+      ].filter(Boolean).join("; ");
       return;
     }
 

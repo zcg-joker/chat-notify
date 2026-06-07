@@ -359,6 +359,12 @@ test("popup prioritizes stable probe candidates in preview", () => {
         diagnostics: {
           probeComparison: {
             sampleCount: 3,
+            scenarioCoverage: [
+              { scenario: "short_response", sampleCount: 1, latestUpdatedAt: 1780761601000 },
+              { scenario: "long_response", sampleCount: 1, latestUpdatedAt: 1780761602000 },
+              { scenario: "tab_switch", sampleCount: 1, latestUpdatedAt: 1780761603000 },
+              { scenario: "same_tab_session_switch", sampleCount: 0, latestUpdatedAt: null },
+            ],
             stableCandidates: [
               {
                 requestKind: "fetch",
@@ -396,7 +402,10 @@ test("popup prioritizes stable probe candidates in preview", () => {
     popup.elements["probe-top-candidate"].textContent,
     "Stable: POST example.com/api/chat/stream via fetch (score 90, 3/3)",
   );
-  assert.equal(popup.elements["probe-risk"].textContent, "Samples: 3");
+  assert.equal(
+    popup.elements["probe-risk"].textContent,
+    "Samples: 3; Covered: short_response, long_response, tab_switch",
+  );
 });
 
 test("popup prioritizes probe recommendation in preview", () => {

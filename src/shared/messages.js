@@ -29,6 +29,7 @@
     "failed_generation",
   ]);
   const REQUIRED_RECOMMENDATION_SCENARIOS = Object.freeze(["short_response", "long_response"]);
+  const COVERAGE_SCENARIOS = Object.freeze(PROBE_SCENARIOS.filter((scenario) => scenario !== "unspecified"));
 
   function sanitizeProbeScenario(value) {
     const scenario = cleanString(value).toLowerCase();
@@ -178,6 +179,23 @@
     ].join("\u0000");
   }
 
+  function createScenarioCoverage(samples) {
+    const coverageByScenario = new Map(
+      COVERAGE_SCENARIOS.map((scenario) => [scenario, { scenario, sampleCount: 0, latestUpdatedAt: null }])
+    );
+    samples.forEach((sample) => {
+      const coverage = coverageByScenario.get(sample.scenario);
+      if (!coverage) {
+        return;
+      }
+      coverage.sampleCount += 1;
+      if (Number.isFinite(sample.updatedAt)) {
+        coverage.latestUpdatedAt = Math.max(coverage.latestUpdatedAt || 0, sample.updatedAt);
+      }
+    });
+    return COVERAGE_SCENARIOS.map((scenario) => coverageByScenario.get(scenario));
+  }
+
   function createProbeComparison(samples) {
     const sanitizedSamples = Array.isArray(samples)
       ? samples
@@ -197,6 +215,7 @@
         sampleCount: 0,
         stableCandidates: [],
         sampleSummaries: [],
+        scenarioCoverage: createScenarioCoverage(sanitizedSamples),
       };
     }
 
@@ -251,6 +270,7 @@
         candidateCount: sample.requestCandidates.length,
         updatedAt: sample.updatedAt,
       })),
+      scenarioCoverage: createScenarioCoverage(sanitizedSamples),
     };
   }
 

@@ -11,6 +11,9 @@
   const activitySite = document.getElementById("activity-site");
   const activityPrompt = document.getElementById("activity-prompt");
   const activityTimeline = document.getElementById("activity-timeline");
+  const probeReadiness = document.getElementById("probe-readiness");
+  const probeTopCandidate = document.getElementById("probe-top-candidate");
+  const probeRisk = document.getElementById("probe-risk");
   const copyDiagnosticsButton = document.getElementById("copy-diagnostics");
   const copyDiagnosticsStatus = document.getElementById("copy-diagnostics-status");
   const startPageProbeButton = document.getElementById("start-page-probe");
@@ -88,6 +91,45 @@
     return label;
   }
 
+  function titleCaseStatus(value) {
+    const words = String(value || "")
+      .split("_")
+      .filter(Boolean);
+    if (!words.length) {
+      return "";
+    }
+    return [`${words[0].charAt(0).toUpperCase()}${words[0].slice(1)}`, ...words.slice(1)].join(" ");
+  }
+
+  function clearProbePreview() {
+    probeReadiness.textContent = "";
+    probeTopCandidate.textContent = "";
+    probeRisk.textContent = "";
+  }
+
+  function renderProbePreview(flow) {
+    const analysis = flow && flow.analysis;
+    if (!analysis) {
+      clearProbePreview();
+      return;
+    }
+
+    probeReadiness.textContent = titleCaseStatus(analysis.readiness);
+    const topCandidate = analysis.topCandidate;
+    if (topCandidate) {
+      probeTopCandidate.textContent = `Top: ${[
+        topCandidate.method,
+        `${topCandidate.host || ""}${topCandidate.path || ""}`,
+        "via",
+        topCandidate.requestKind,
+      ].filter(Boolean).join(" ")} (score ${topCandidate.score || 0})`;
+    } else {
+      probeTopCandidate.textContent = "";
+    }
+    const riskSignals = Array.isArray(analysis.riskSignals) ? analysis.riskSignals : [];
+    probeRisk.textContent = riskSignals.length ? `Risk: ${riskSignals[0]}` : "";
+  }
+
   function renderDiagnostics(diagnostics) {
     const flow = diagnostics && diagnostics.latestFlow;
     const events = flow && Array.isArray(flow.events) ? flow.events : [];
@@ -101,6 +143,7 @@
       activitySite.textContent = "";
       activityPrompt.textContent = "";
       activityTimeline.textContent = "";
+      renderProbePreview(flow);
       return;
     }
 
@@ -111,6 +154,7 @@
     activitySite.textContent = flow.displayName || flow.siteId || "";
     activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";
     activityTimeline.textContent = labels.join(" -> ");
+    renderProbePreview(flow);
   }
 
   function renderPopupStatus(response) {

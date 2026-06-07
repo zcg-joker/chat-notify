@@ -53,6 +53,15 @@ p {
   gap: 4px;
 }
 
+.probe-preview {
+  display: grid;
+  gap: 4px;
+}
+
+.probe-preview:has(#probe-readiness:empty) {
+  display: none;
+}
+
 .status-row {
   display: flex;
   align-items: baseline;

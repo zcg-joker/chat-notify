@@ -57,6 +57,9 @@ function runPopup({
     "activity-timeline": createElement("activity-timeline"),
     "copy-diagnostics": createElement("copy-diagnostics"),
     "copy-diagnostics-status": createElement("copy-diagnostics-status"),
+    "probe-readiness": createElement("probe-readiness"),
+    "probe-top-candidate": createElement("probe-top-candidate"),
+    "probe-risk": createElement("probe-risk"),
     "start-page-probe": createElement("start-page-probe"),
     "start-page-probe-status": createElement("start-page-probe-status"),
   };
@@ -159,6 +162,10 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /id="activity-site"/);
   assert.match(html, /id="activity-prompt"/);
   assert.match(html, /id="activity-timeline"/);
+  assert.match(html, /aria-label="Probe preview"/);
+  assert.match(html, /id="probe-readiness"/);
+  assert.match(html, /id="probe-top-candidate"/);
+  assert.match(html, /id="probe-risk"/);
   assert.match(html, /id="copy-diagnostics"/);
   assert.match(html, /id="copy-diagnostics-status"/);
   assert.match(html, /id="start-page-probe"/);
@@ -167,6 +174,7 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /src="\.\/popup\.js"/);
   assert.match(css, /\.popup/);
   assert.match(css, /\.activity-timeline/);
+  assert.match(css, /\.probe-preview/);
 });
 
 test("popup initializes stored toggle states and supported site status", () => {
@@ -285,6 +293,53 @@ test("popup renders no recent activity when diagnostics latest flow is empty", (
   assert.equal(popup.elements["activity-site"].textContent, "");
   assert.equal(popup.elements["activity-prompt"].textContent, "");
   assert.equal(popup.elements["activity-timeline"].textContent, "");
+  assert.equal(popup.elements["probe-readiness"].textContent, "");
+  assert.equal(popup.elements["probe-top-candidate"].textContent, "");
+  assert.equal(popup.elements["probe-risk"].textContent, "");
+});
+
+test("popup renders probe readiness preview from diagnostics analysis", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: {
+            siteId: "page-probe",
+            displayName: "Page Probe",
+            events: [{ eventType: "request_probe_matched" }],
+            analysis: {
+              readiness: "needs_manual_verification",
+              topCandidate: {
+                requestKind: "eventsource",
+                method: "GET",
+                host: "example.com",
+                path: "/api/chat/events",
+                score: 110,
+                signals: ["streaming_transport", "generation_path"],
+              },
+              riskSignals: [
+                "Top candidate uses a streaming transport; URL matching is visible, but message contents are not inspected by probe mode.",
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["probe-readiness"].textContent, "Needs manual verification");
+  assert.equal(
+    popup.elements["probe-top-candidate"].textContent,
+    "Top: GET example.com/api/chat/events via eventsource (score 110)",
+  );
+  assert.equal(
+    popup.elements["probe-risk"].textContent,
+    "Risk: Top candidate uses a streaming transport; URL matching is visible, but message contents are not inspected by probe mode.",
+  );
 });
 
 test("popup renders Gemini recent activity timeline from diagnostics", () => {

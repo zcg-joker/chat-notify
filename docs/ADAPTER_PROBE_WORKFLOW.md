@@ -36,6 +36,7 @@ The copied report is intentionally small and adapter-focused.
 - `latestFlow.summary.requestCandidateCount`: number of retained sanitized request candidates.
 - `latestFlow.requestCandidates`: bounded, de-duplicated same-host request candidates retained for adapter design.
 - `latestFlow.likelyGenerationCandidates`: heuristic ranking of request candidates that look most like generation requests.
+- `latestFlow.adapterDraft`: a first-pass adapter draft with suggested host, site id, bridge matchers, rationale, and `manualChecks`.
 - `latestFlow.matchedRequests`: sanitized request metadata for matched generation candidates.
 - `latestFlow.ignoredRequests`: sanitized request metadata for ignored request candidates.
 - `latestFlow.events`: compact event timeline with sanitized request metadata only.
@@ -96,6 +97,8 @@ The unsupported-site adapter is probe-only. It records sanitized same-host fetch
 The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
+
+Use `adapterDraft` as a handoff sketch, not as generated production code. It suggests bridge matchers from the strongest candidates and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
 
 Keep host permissions narrow. Do not broaden the manifest to all websites just to make adapter discovery easier.
 

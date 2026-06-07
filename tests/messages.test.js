@@ -244,6 +244,7 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
         },
       ],
       likelyGenerationCandidates: [],
+      adapterDraft: null,
       matchedRequests: [
         {
           requestKind: "fetch",
@@ -404,6 +405,77 @@ test("createProbeReport ranks likely generation candidates for adapter design", 
   const serialized = JSON.stringify(report);
   assert.equal(serialized.includes("token=secret"), false);
   assert.equal(serialized.includes("conversation=secret"), false);
+});
+
+test("createProbeReport creates an adapter draft from likely generation candidates", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: false,
+      host: "example.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: false,
+    },
+    popupStatus: {
+      diagnostics: {
+        latestFlow: {
+          flowId: "probe:example.com:1780761600000",
+          siteId: "page-probe",
+          displayName: "Page Probe",
+          updatedAt: 1780761602000,
+          requestCandidates: [
+            {
+              requestKind: "xhr",
+              method: "POST",
+              host: "example.com",
+              path: "/api/chat/stream?conversation=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/generate?token=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+          ],
+          events: [],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(report.latestFlow.adapterDraft, {
+    host: "example.com",
+    siteIdSuggestion: "example",
+    displayNameSuggestion: "Example",
+    confidence: "medium",
+    promptExtractorSuggestion: "none",
+    lifecycleBridgeConfigSuggestion: {
+      hosts: ["example.com"],
+      generationRequestMatchers: [
+        { pathname: "/api/chat/stream" },
+        { pathname: "/api/generate" },
+      ],
+    },
+    rationale: [
+      "Top candidate /api/chat/stream scored 90 from post_method, generation_path, stream_path, chat_path.",
+      "Candidate paths are same-host and sanitized; query strings, bodies, and headers are omitted.",
+    ],
+    manualChecks: [
+      "Confirm the top matcher stays open until the visible AI response is complete.",
+      "Confirm prompt extraction can use visible editor text or implement a safe request-body extractor.",
+      "Confirm send detection, session key extraction, cancellation, and same-tab session switching.",
+    ],
+  });
+
+  const serialized = JSON.stringify(report.latestFlow.adapterDraft);
+  assert.equal(serialized.includes("conversation=secret"), false);
+  assert.equal(serialized.includes("token=secret"), false);
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

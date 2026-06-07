@@ -145,6 +145,54 @@
       .slice(0, 5);
   }
 
+  function createSuggestionId(host) {
+    const firstLabel = cleanString(host).toLowerCase().split(".").find(Boolean) || "site";
+    return firstLabel.replace(/[^a-z0-9_-]/g, "") || "site";
+  }
+
+  function createDisplayNameSuggestion(siteId) {
+    if (!siteId) {
+      return "AI Site";
+    }
+    return `${siteId.charAt(0).toUpperCase()}${siteId.slice(1)}`;
+  }
+
+  function createAdapterDraft(currentPage, likelyGenerationCandidates) {
+    if (!likelyGenerationCandidates.length) {
+      return null;
+    }
+    const host = cleanString(currentPage.host).toLowerCase();
+    if (!host) {
+      return null;
+    }
+    const siteIdSuggestion = createSuggestionId(host);
+    const topCandidate = likelyGenerationCandidates[0];
+    const matchers = likelyGenerationCandidates
+      .filter((candidate) => candidate.score >= 50)
+      .map((candidate) => ({ pathname: candidate.path }))
+      .slice(0, 3);
+    return {
+      host,
+      siteIdSuggestion,
+      displayNameSuggestion: createDisplayNameSuggestion(siteIdSuggestion),
+      confidence: topCandidate.score >= 90 ? "medium" : "low",
+      promptExtractorSuggestion: "none",
+      lifecycleBridgeConfigSuggestion: {
+        hosts: [host],
+        generationRequestMatchers: matchers.length ? matchers : [{ pathname: topCandidate.path }],
+      },
+      rationale: [
+        `Top candidate ${topCandidate.path} scored ${topCandidate.score} from ${topCandidate.signals.join(", ")}.`,
+        "Candidate paths are same-host and sanitized; query strings, bodies, and headers are omitted.",
+      ],
+      manualChecks: [
+        "Confirm the top matcher stays open until the visible AI response is complete.",
+        "Confirm prompt extraction can use visible editor text or implement a safe request-body extractor.",
+        "Confirm send detection, session key extraction, cancellation, and same-tab session switching.",
+      ],
+    };
+  }
+
   function createProbeReport(input = {}) {
     const status = input.popupStatus || {};
     const diagnostics = status.diagnostics || {};
@@ -188,6 +236,7 @@
     };
 
     if (flow) {
+      const adapterDraft = createAdapterDraft(report.currentPage, likelyGenerationCandidates);
       report.latestFlow = {
         flowId: cleanString(flow.flowId),
         siteId: cleanString(flow.siteId),
@@ -206,6 +255,7 @@
         },
         requestCandidates,
         likelyGenerationCandidates,
+        adapterDraft,
         matchedRequests,
         ignoredRequests,
         events,

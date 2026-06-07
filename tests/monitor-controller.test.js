@@ -76,6 +76,37 @@ test("canceled lifecycle does not emit completion and clears pending session", (
   assert.equal(controller.getPendingSessions().length, 0);
 });
 
+test("does not use historical user message as prompt excerpt when draft is unavailable", () => {
+  let currentTime = 1000;
+  const completed = [];
+  const adapter = {
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    getSessionKey: () => "conversation:a",
+    getPromptDraft: () => "",
+    getLatestUserMessage: () => "previous message should not be used",
+    getLatestAssistantSnapshot: () => "",
+    isResponding: () => false,
+  };
+
+  const controller = createMonitorController({
+    adapter,
+    root: {},
+    sourceTabId: 7,
+    now: () => currentTime,
+    onCompleted: (event) => completed.push(event),
+    settleMs: 10,
+  });
+
+  controller.handleUserSend();
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  controller.handleLifecycleEvent({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+  currentTime = 1011;
+  controller.tick();
+
+  assert.equal(completed[0].promptExcerpt, "");
+});
+
 test("routes known lifecycle events to the original same-tab session after switching sessions", () => {
   let currentTime = 1000;
   const completed = [];

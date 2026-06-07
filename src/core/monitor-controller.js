@@ -90,8 +90,7 @@
     }
 
     function capturePromptExcerpt() {
-      const promptText = adapter.getPromptDraft(root) || adapter.getLatestUserMessage(root);
-      return deps.createPromptExcerpt(promptText);
+      return deps.createPromptExcerpt(adapter.getPromptDraft(root));
     }
 
     function handleUserSend() {

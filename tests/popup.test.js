@@ -342,6 +342,57 @@ test("popup renders probe readiness preview from diagnostics analysis", () => {
   );
 });
 
+test("popup prioritizes stable probe candidates in preview", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          probeComparison: {
+            sampleCount: 3,
+            stableCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream",
+                score: 90,
+                stability: "3/3",
+              },
+            ],
+          },
+          latestFlow: {
+            siteId: "page-probe",
+            displayName: "Page Probe",
+            events: [{ eventType: "request_probe_matched" }],
+            analysis: {
+              readiness: "needs_manual_verification",
+              topCandidate: {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/noisy/latest",
+                score: 70,
+              },
+              riskSignals: ["Latest flow still needs manual checks."],
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["probe-readiness"].textContent, "Stable candidate");
+  assert.equal(
+    popup.elements["probe-top-candidate"].textContent,
+    "Stable: POST example.com/api/chat/stream via fetch (score 90, 3/3)",
+  );
+  assert.equal(popup.elements["probe-risk"].textContent, "Samples: 3");
+});
+
 test("popup renders Gemini recent activity timeline from diagnostics", () => {
   const popup = runPopup({
     tabUrl: "https://gemini.google.com/app",

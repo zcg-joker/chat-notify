@@ -107,7 +107,33 @@
     probeRisk.textContent = "";
   }
 
-  function renderProbePreview(flow) {
+  function formatCandidate(candidate) {
+    return [
+      candidate && candidate.method,
+      `${(candidate && candidate.host) || ""}${(candidate && candidate.path) || ""}`,
+      "via",
+      candidate && candidate.requestKind,
+    ].filter(Boolean).join(" ");
+  }
+
+  function renderProbePreview(diagnostics) {
+    const comparison = diagnostics && diagnostics.probeComparison;
+    const stableCandidates = comparison && Array.isArray(comparison.stableCandidates)
+      ? comparison.stableCandidates
+      : [];
+    if (stableCandidates.length) {
+      const stableCandidate = stableCandidates[0];
+      probeReadiness.textContent = "Stable candidate";
+      probeTopCandidate.textContent = `Stable: ${formatCandidate(stableCandidate)} (score ${
+        stableCandidate.score || 0
+      }, ${stableCandidate.stability || "stable"})`;
+      probeRisk.textContent = Number.isFinite(comparison.sampleCount)
+        ? `Samples: ${comparison.sampleCount}`
+        : "";
+      return;
+    }
+
+    const flow = diagnostics && diagnostics.latestFlow;
     const analysis = flow && flow.analysis;
     if (!analysis) {
       clearProbePreview();
@@ -117,12 +143,7 @@
     probeReadiness.textContent = titleCaseStatus(analysis.readiness);
     const topCandidate = analysis.topCandidate;
     if (topCandidate) {
-      probeTopCandidate.textContent = `Top: ${[
-        topCandidate.method,
-        `${topCandidate.host || ""}${topCandidate.path || ""}`,
-        "via",
-        topCandidate.requestKind,
-      ].filter(Boolean).join(" ")} (score ${topCandidate.score || 0})`;
+      probeTopCandidate.textContent = `Top: ${formatCandidate(topCandidate)} (score ${topCandidate.score || 0})`;
     } else {
       probeTopCandidate.textContent = "";
     }
@@ -143,7 +164,7 @@
       activitySite.textContent = "";
       activityPrompt.textContent = "";
       activityTimeline.textContent = "";
-      renderProbePreview(flow);
+      renderProbePreview(diagnostics);
       return;
     }
 
@@ -154,7 +175,7 @@
     activitySite.textContent = flow.displayName || flow.siteId || "";
     activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";
     activityTimeline.textContent = labels.join(" -> ");
-    renderProbePreview(flow);
+    renderProbePreview(diagnostics);
   }
 
   function renderPopupStatus(response) {

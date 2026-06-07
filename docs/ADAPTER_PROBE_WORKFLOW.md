@@ -28,6 +28,11 @@ The copied report is intentionally small and adapter-focused.
 - `probeComparison.sampleCount`: number of retained page-probe samples available for cross-run comparison.
 - `probeComparison.stableCandidates`: sanitized request candidates that appeared in at least two retained probe samples.
 - `probeComparison.sampleSummaries`: compact flow id, scenario, candidate count, and update time for each retained sample.
+- `recommendation.status`: whether the retained samples are `insufficient_evidence`, `collect_more_samples`, or `ready_for_adapter_draft`.
+- `recommendation.summary`: short explanation of why that status was chosen.
+- `recommendation.missingScenarios`: key probe scenarios still needed before drafting an adapter matcher.
+- `recommendation.primaryCandidate`: the strongest stable sanitized request candidate, when one exists.
+- `recommendation.nextActions`: concrete follow-up checks for the next probe or adapter-draft step.
 - `latestFlow.siteId`: the adapter that handled the latest observed flow.
 - `latestFlow.promptExcerpt`: a short sanitized prompt excerpt.
 - `latestFlow.summary.totalEvents`: number of stored diagnostic events.
@@ -101,6 +106,8 @@ The unsupported-site adapter is probe-only. It records sanitized same-host fetch
 The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
 
 Recent page-probe flows are also retained as bounded `probeSamples`. Each sample includes a sanitized scenario label from a fixed list, such as `short_response`, `long_response`, `tab_switch`, `same_tab_session_switch`, `canceled_generation`, or `failed_generation`. The copied report uses these samples to build `probeComparison`, including `stableCandidates` that appeared across multiple samples. Prefer stable candidates when choosing generation matchers, especially after collecting short response, long response, tab-switch, and cancellation samples.
+
+Use `recommendation` as the first triage result for retained probe samples. `insufficient_evidence` means the report does not yet have enough samples to choose a matcher. `collect_more_samples` means a stable candidate exists, but key scenarios such as `short_response` or `long_response` still need evidence. `ready_for_adapter_draft` means the strongest stable candidate covers both short and long responses and is ready to become a first adapter matcher draft, after manual timing checks.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 

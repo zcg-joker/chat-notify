@@ -28,6 +28,7 @@
     "canceled_generation",
     "failed_generation",
   ]);
+  const REQUIRED_RECOMMENDATION_SCENARIOS = Object.freeze(["short_response", "long_response"]);
 
   function sanitizeProbeScenario(value) {
     const scenario = cleanString(value).toLowerCase();
@@ -253,6 +254,72 @@
     };
   }
 
+  function createRecommendationCandidate(candidate) {
+    if (!candidate) {
+      return null;
+    }
+    return {
+      requestKind: candidate.requestKind,
+      method: candidate.method,
+      host: candidate.host,
+      path: candidate.path,
+      score: candidate.score,
+      stability: candidate.stability,
+      scenarios: Array.isArray(candidate.scenarios) ? candidate.scenarios.slice() : [],
+    };
+  }
+
+  function createProbeRecommendation(probeComparison) {
+    const stableCandidates = probeComparison && Array.isArray(probeComparison.stableCandidates)
+      ? probeComparison.stableCandidates
+      : [];
+    const primaryCandidate = stableCandidates[0] || null;
+    if (!primaryCandidate) {
+      return {
+        status: "insufficient_evidence",
+        summary: "Collect at least two page-probe samples before choosing an adapter matcher.",
+        missingScenarios: REQUIRED_RECOMMENDATION_SCENARIOS.slice(),
+        primaryCandidate: null,
+        nextActions: [
+          "Run page probe for a short response.",
+          "Run page probe for a long response.",
+        ],
+      };
+    }
+
+    const candidateScenarios = Array.isArray(primaryCandidate.scenarios) ? primaryCandidate.scenarios : [];
+    const missingScenarios = REQUIRED_RECOMMENDATION_SCENARIOS.filter(
+      (scenario) => !candidateScenarios.includes(scenario)
+    );
+    if (missingScenarios.length) {
+      return {
+        status: "collect_more_samples",
+        summary: "Stable candidate found, but key probe scenarios are still missing.",
+        missingScenarios,
+        primaryCandidate: createRecommendationCandidate(primaryCandidate),
+        nextActions: [
+          ...missingScenarios.map((scenario) =>
+            scenario === "short_response"
+              ? "Run page probe for a short response."
+              : "Run page probe for a long response."
+          ),
+          "Confirm the stable candidate appears in the missing scenarios.",
+        ],
+      };
+    }
+
+    return {
+      status: "ready_for_adapter_draft",
+      summary: "Stable generation candidate covers short and long response samples.",
+      missingScenarios: [],
+      primaryCandidate: createRecommendationCandidate(primaryCandidate),
+      nextActions: [
+        "Confirm the candidate stays active until visible completion.",
+        "Use the stable candidate as the first adapter matcher draft.",
+      ],
+    };
+  }
+
   function createSuggestionId(host) {
     const firstLabel = cleanString(host).toLowerCase().split(".").find(Boolean) || "site";
     return firstLabel.replace(/[^a-z0-9_-]/g, "") || "site";
@@ -400,6 +467,7 @@
     const currentPage = input.currentPage || {};
     const settings = input.settings || {};
     const probeComparison = createProbeComparison(diagnostics.probeSamples);
+    const recommendation = createProbeRecommendation(probeComparison);
     const report = {
       schemaVersion: 1,
       generatedAt: Number.isFinite(input.generatedAt) ? input.generatedAt : Date.now(),
@@ -412,6 +480,7 @@
         debugLogs: Boolean(settings.debugLogs),
       },
       probeComparison,
+      recommendation,
       latestFlow: null,
     };
 

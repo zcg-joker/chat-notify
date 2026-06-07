@@ -222,6 +222,16 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
       stableCandidates: [],
       sampleSummaries: [],
     },
+    recommendation: {
+      status: "insufficient_evidence",
+      summary: "Collect at least two page-probe samples before choosing an adapter matcher.",
+      missingScenarios: ["short_response", "long_response"],
+      primaryCandidate: null,
+      nextActions: [
+        "Run page probe for a short response.",
+        "Run page probe for a long response.",
+      ],
+    },
     latestFlow: {
       flowId: "chatgpt:1780761600000:1",
       siteId: "chatgpt",
@@ -703,9 +713,96 @@ test("createProbeReport compares probe samples and highlights stable candidates"
       },
     ],
   });
+  assert.deepEqual(report.recommendation, {
+    status: "ready_for_adapter_draft",
+    summary: "Stable generation candidate covers short and long response samples.",
+    missingScenarios: [],
+    primaryCandidate: {
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: "/api/chat/stream",
+      score: 90,
+      stability: "2/2",
+      scenarios: ["short_response", "long_response"],
+    },
+    nextActions: [
+      "Confirm the candidate stays active until visible completion.",
+      "Use the stable candidate as the first adapter matcher draft.",
+    ],
+  });
 
   const serialized = JSON.stringify(report.probeComparison);
   assert.equal(serialized.includes("token=secret"), false);
+});
+
+test("createProbeReport recommends collecting missing key scenarios", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: false,
+      host: "example.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: false,
+    },
+    popupStatus: {
+      diagnostics: {
+        probeSamples: [
+          {
+            flowId: "probe:example.com:short-1",
+            scenario: "short_response",
+            updatedAt: 1780761601000,
+            requestCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+            ],
+          },
+          {
+            flowId: "probe:example.com:short-2",
+            scenario: "short_response",
+            updatedAt: 1780761602000,
+            requestCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream",
+                matched: true,
+                reason: "probe_observed_request",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(report.recommendation, {
+    status: "collect_more_samples",
+    summary: "Stable candidate found, but key probe scenarios are still missing.",
+    missingScenarios: ["long_response"],
+    primaryCandidate: {
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: "/api/chat/stream",
+      score: 90,
+      stability: "2/2",
+      scenarios: ["short_response"],
+    },
+    nextActions: [
+      "Run page probe for a long response.",
+      "Confirm the stable candidate appears in the missing scenarios.",
+    ],
+  });
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

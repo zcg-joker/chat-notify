@@ -20,7 +20,7 @@
 })(globalThis, function buildBackground(messages) {
   const { MESSAGE_TYPES } = messages;
   const LOG_PREFIX = "[Chat Notify]";
-  const NOTIFICATION_ICON = "assets/icon-128.png";
+  const NOTIFICATION_ICON_PATH = "assets/icon-128.png";
 
   function log(level, message, detail) {
     if (typeof console === "undefined" || typeof console[level] !== "function") {
@@ -37,12 +37,19 @@
     return String(value || "unknown").replace(/[^a-zA-Z0-9:_-]/g, "_");
   }
 
-  function buildCompletionNotification(payload) {
+  function resolveNotificationIcon(chromeApi) {
+    if (chromeApi && chromeApi.runtime && typeof chromeApi.runtime.getURL === "function") {
+      return chromeApi.runtime.getURL(NOTIFICATION_ICON_PATH);
+    }
+    return NOTIFICATION_ICON_PATH;
+  }
+
+  function buildCompletionNotification(payload, chromeApi) {
     const displayName = payload.displayName || "AI";
     const promptExcerpt = payload.promptExcerpt || "";
     return {
       type: "basic",
-      iconUrl: NOTIFICATION_ICON,
+      iconUrl: resolveNotificationIcon(chromeApi),
       title: `${displayName} response complete`,
       message: promptExcerpt ? `"${promptExcerpt}" is ready` : "Your response is ready",
       priority: 1,
@@ -98,7 +105,7 @@
         const id = `chat-notify:test:${now()}`;
         const notificationResult = await notify(id, {
           type: "basic",
-          iconUrl: NOTIFICATION_ICON,
+          iconUrl: resolveNotificationIcon(chromeApi),
           title: "Chat Notify test",
           message: "Notifications are working",
           priority: 1,
@@ -132,7 +139,7 @@
         now(),
       ].join(":");
 
-      const notificationResult = await notify(id, buildCompletionNotification(payload));
+      const notificationResult = await notify(id, buildCompletionNotification(payload, chromeApi));
       if (!notificationResult.ok) {
         log("warn", "completion notification failed", notificationResult.error);
         return { ok: false, error: notificationResult.error, notificationId: id };
@@ -148,6 +155,7 @@
     return {
       handleMessage,
       buildCompletionNotification,
+      resolveNotificationIcon: () => resolveNotificationIcon(chromeApi),
     };
   }
 
@@ -170,5 +178,6 @@
   return {
     createNotificationService,
     buildCompletionNotification,
+    resolveNotificationIcon,
   };
 });

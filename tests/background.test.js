@@ -10,6 +10,11 @@ test("creates completion notification with prompt excerpt", async () => {
   const created = [];
   const service = createNotificationService({
     chromeApi: {
+      runtime: {
+        getURL(path) {
+          return `chrome-extension://test/${path}`;
+        },
+      },
       notifications: {
         create(id, options, callback) {
           created.push({ id, options });
@@ -33,7 +38,7 @@ test("creates completion notification with prompt excerpt", async () => {
 
   assert.equal(result.ok, true);
   assert.match(created[0].id, /^chat-notify:chatgpt:conversation:a:3:/);
-  assert.equal(created[0].options.iconUrl, "assets/icon-128.png");
+  assert.equal(created[0].options.iconUrl, "chrome-extension://test/assets/icon-128.png");
   assert.equal(created[0].options.title, "ChatGPT response complete");
   assert.equal(created[0].options.message, "\"Summarize this paper...\" is ready");
 });
@@ -42,6 +47,11 @@ test("uses fallback notification message when excerpt is empty", async () => {
   const created = [];
   const service = createNotificationService({
     chromeApi: {
+      runtime: {
+        getURL(path) {
+          return `chrome-extension://test/${path}`;
+        },
+      },
       notifications: {
         create(id, options, callback) {
           created.push({ id, options });
@@ -102,6 +112,11 @@ test("creates test notification", async () => {
   const created = [];
   const service = createNotificationService({
     chromeApi: {
+      runtime: {
+        getURL(path) {
+          return `chrome-extension://test/${path}`;
+        },
+      },
       notifications: {
         create(id, options, callback) {
           created.push({ id, options });
@@ -116,7 +131,7 @@ test("creates test notification", async () => {
 
   assert.equal(result.ok, true);
   assert.match(result.notificationId, /^chat-notify:test:/);
-  assert.equal(created[0].options.iconUrl, "assets/icon-128.png");
+  assert.equal(created[0].options.iconUrl, "chrome-extension://test/assets/icon-128.png");
   assert.equal(created[0].options.title, "Chat Notify test");
   assert.equal(created[0].options.message, "Notifications are working");
 });

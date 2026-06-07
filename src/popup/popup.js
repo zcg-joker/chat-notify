@@ -16,6 +16,7 @@
   const probeRisk = document.getElementById("probe-risk");
   const copyDiagnosticsButton = document.getElementById("copy-diagnostics");
   const copyDiagnosticsStatus = document.getElementById("copy-diagnostics-status");
+  const probeScenarioSelect = document.getElementById("probe-scenario");
   const startPageProbeButton = document.getElementById("start-page-probe");
   const startPageProbeStatus = document.getElementById("start-page-probe-status");
   let latestPopupStatus = null;
@@ -259,6 +260,7 @@
     const message = ChatNotify.createStartPageProbeMessage({
       tabId: latestPageInfo.tabId,
       host: latestPageInfo.host,
+      scenario: probeScenarioSelect.value,
     });
     chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError) {

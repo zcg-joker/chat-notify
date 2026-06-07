@@ -92,6 +92,21 @@
     return `${characters.slice(0, safeLimit).join("")}...`;
   }
 
+  function sanitizeProbeScenario(value) {
+    const scenario = typeof value === "string" ? value.trim().toLowerCase() : "";
+    return [
+      "unspecified",
+      "short_response",
+      "long_response",
+      "tab_switch",
+      "same_tab_session_switch",
+      "canceled_generation",
+      "failed_generation",
+    ].includes(scenario)
+      ? scenario
+      : "unspecified";
+  }
+
   function sanitizeDiagnosticRequest(request) {
     if (!request || typeof request !== "object") {
       return null;
@@ -149,6 +164,7 @@
             flowId: sample && sample.flowId ? sample.flowId : "",
             siteId: sample && sample.siteId ? sample.siteId : "",
             displayName: sample && sample.displayName ? sample.displayName : "",
+            scenario: sample && sample.scenario ? sanitizeProbeScenario(sample.scenario) : "unspecified",
             updatedAt: sample && Number.isFinite(sample.updatedAt) ? sample.updatedAt : null,
             requestCandidates: cloneRequestCandidates(sample && sample.requestCandidates),
           }))
@@ -170,6 +186,7 @@
       flowId: flow.flowId,
       siteId: flow.siteId,
       displayName: flow.displayName || "",
+      scenario: sanitizeProbeScenario(flow.scenario),
       updatedAt: Number.isFinite(flow.updatedAt) ? flow.updatedAt : null,
       requestCandidates,
     };
@@ -209,33 +226,39 @@
         ),
         diagnostics: {
           latestFlow: source.diagnostics && source.diagnostics.latestFlow
-            ? {
-                flowId: source.diagnostics.latestFlow.flowId || "",
-                siteId: source.diagnostics.latestFlow.siteId || "",
-                displayName: source.diagnostics.latestFlow.displayName || "",
-                promptExcerpt: sanitizePromptExcerpt(source.diagnostics.latestFlow.promptExcerpt),
-                updatedAt: isFiniteNumber(source.diagnostics.latestFlow.updatedAt)
-                  ? source.diagnostics.latestFlow.updatedAt
-                  : null,
-                events: Array.isArray(source.diagnostics.latestFlow.events)
-                  ? source.diagnostics.latestFlow.events.slice(-MAX_DIAGNOSTIC_EVENTS).map((event) => {
-                      const clonedEvent = {
-                        eventType: event.eventType || "",
-                        status: event.status === "failed" ? "failed" : "ok",
-                        message: event.message || "",
-                        updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
-                      };
-                      const request = sanitizeDiagnosticRequest(event.request);
-                      if (request) {
-                        clonedEvent.request = request;
-                      }
-                      return clonedEvent;
-                    })
-                  : [],
-                requestCandidates: Array.isArray(source.diagnostics.latestFlow.requestCandidates)
-                  ? cloneRequestCandidates(source.diagnostics.latestFlow.requestCandidates)
-                  : [],
-              }
+            ? (() => {
+                const latestFlow = {
+                  flowId: source.diagnostics.latestFlow.flowId || "",
+                  siteId: source.diagnostics.latestFlow.siteId || "",
+                  displayName: source.diagnostics.latestFlow.displayName || "",
+                  promptExcerpt: sanitizePromptExcerpt(source.diagnostics.latestFlow.promptExcerpt),
+                  updatedAt: isFiniteNumber(source.diagnostics.latestFlow.updatedAt)
+                    ? source.diagnostics.latestFlow.updatedAt
+                    : null,
+                  events: Array.isArray(source.diagnostics.latestFlow.events)
+                    ? source.diagnostics.latestFlow.events.slice(-MAX_DIAGNOSTIC_EVENTS).map((event) => {
+                        const clonedEvent = {
+                          eventType: event.eventType || "",
+                          status: event.status === "failed" ? "failed" : "ok",
+                          message: event.message || "",
+                          updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
+                        };
+                        const request = sanitizeDiagnosticRequest(event.request);
+                        if (request) {
+                          clonedEvent.request = request;
+                        }
+                        return clonedEvent;
+                      })
+                    : [],
+                  requestCandidates: Array.isArray(source.diagnostics.latestFlow.requestCandidates)
+                    ? cloneRequestCandidates(source.diagnostics.latestFlow.requestCandidates)
+                    : [],
+                };
+                if (latestFlow.siteId === "page-probe") {
+                  latestFlow.scenario = sanitizeProbeScenario(source.diagnostics.latestFlow.scenario);
+                }
+                return latestFlow;
+              })()
             : null,
           probeSamples: cloneProbeSamples(source.diagnostics && source.diagnostics.probeSamples),
         },
@@ -375,6 +398,7 @@
     async function startPageProbe(payload = {}, sender = {}) {
       const tabId = Number.isFinite(payload.tabId) ? payload.tabId : sender.tab && sender.tab.id;
       const host = typeof payload.host === "string" ? payload.host.trim().toLowerCase() : "";
+      const scenario = sanitizeProbeScenario(payload.scenario);
       if (!isFiniteNumber(tabId) || !host) {
         return { ok: false, error: "Probe requires an active tab and host" };
       }
@@ -401,10 +425,11 @@
         flowId: `probe:${host}:${now()}`,
         siteId: "page-probe",
         displayName: "Page Probe",
+        scenario,
         eventType: "probe_started",
         message: host,
       });
-      return { ok: true, probeStarted: true, host };
+      return { ok: true, probeStarted: true, host, scenario };
     }
 
     async function getPopupStatus() {
@@ -475,6 +500,11 @@
           events: previousEvents.concat(event).slice(-MAX_DIAGNOSTIC_EVENTS),
           requestCandidates: appendRequestCandidate(previousRequestCandidates, request),
         };
+        if (latestFlow.siteId === "page-probe") {
+          latestFlow.scenario = sanitizeProbeScenario(
+            payload.scenario || (sameFlow && currentFlow && currentFlow.scenario)
+          );
+        }
         const probeSamples = updateProbeSamples(
           current.diagnostics && current.diagnostics.probeSamples,
           latestFlow

@@ -65,6 +65,19 @@
         <input id="debug-logs-toggle" type="checkbox">
       </label>
 
+      <label class="toggle-row">
+        <span>Probe scenario</span>
+        <select id="probe-scenario">
+          <option value="short_response">Short response</option>
+          <option value="long_response">Long response</option>
+          <option value="tab_switch">Tab switch</option>
+          <option value="same_tab_session_switch">Same-tab switch</option>
+          <option value="canceled_generation">Canceled</option>
+          <option value="failed_generation">Failed</option>
+          <option value="unspecified">Unspecified</option>
+        </select>
+      </label>
+
       <button id="test-notification" type="button">Test notification</button>
       <button id="start-page-probe" type="button" disabled>Start page probe</button>
       <p id="start-page-probe-status" class="notification-detail"></p>

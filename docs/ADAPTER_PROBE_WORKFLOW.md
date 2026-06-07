@@ -8,7 +8,7 @@ The goal is to adapt from evidence. First capture a small sanitized probe report
 
 1. Load Chat Notify as an unpacked extension.
 2. Open a supported page, or open the unsupported page you want to investigate.
-3. If the popup says the page is unsupported, click "Start page probe".
+3. If the popup says the page is unsupported, choose the closest "Probe scenario", then click "Start page probe".
 4. Open the popup and turn on "Debug logs" only if console details are needed. Start page probe does not require Debug logs to collect sanitized same-host request candidates.
 5. Send one short non-sensitive prompt.
 6. Wait until the AI response completes or the bug reproduces.
@@ -27,7 +27,7 @@ The copied report is intentionally small and adapter-focused.
 - `settings.debugLogs`: whether debug logs were enabled.
 - `probeComparison.sampleCount`: number of retained page-probe samples available for cross-run comparison.
 - `probeComparison.stableCandidates`: sanitized request candidates that appeared in at least two retained probe samples.
-- `probeComparison.sampleSummaries`: compact flow id, candidate count, and update time for each retained sample.
+- `probeComparison.sampleSummaries`: compact flow id, scenario, candidate count, and update time for each retained sample.
 - `latestFlow.siteId`: the adapter that handled the latest observed flow.
 - `latestFlow.promptExcerpt`: a short sanitized prompt excerpt.
 - `latestFlow.summary.totalEvents`: number of stored diagnostic events.
@@ -100,7 +100,7 @@ The unsupported-site adapter is probe-only. It records sanitized same-host fetch
 
 The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
 
-Recent page-probe flows are also retained as bounded `probeSamples`. The copied report uses them to build `probeComparison`, including `stableCandidates` that appeared across multiple samples. Prefer stable candidates when choosing generation matchers, especially after collecting short response, long response, tab-switch, and cancellation samples.
+Recent page-probe flows are also retained as bounded `probeSamples`. Each sample includes a sanitized scenario label from a fixed list, such as `short_response`, `long_response`, `tab_switch`, `same_tab_session_switch`, `canceled_generation`, or `failed_generation`. The copied report uses these samples to build `probeComparison`, including `stableCandidates` that appeared across multiple samples. Prefer stable candidates when choosing generation matchers, especially after collecting short response, long response, tab-switch, and cancellation samples.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 

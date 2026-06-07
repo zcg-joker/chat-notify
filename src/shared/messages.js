@@ -19,6 +19,21 @@
     return typeof value === "string" ? value.trim() : "";
   }
 
+  const PROBE_SCENARIOS = Object.freeze([
+    "unspecified",
+    "short_response",
+    "long_response",
+    "tab_switch",
+    "same_tab_session_switch",
+    "canceled_generation",
+    "failed_generation",
+  ]);
+
+  function sanitizeProbeScenario(value) {
+    const scenario = cleanString(value).toLowerCase();
+    return PROBE_SCENARIOS.includes(scenario) ? scenario : "unspecified";
+  }
+
   function createPromptExcerpt(value, limit = 40) {
     const normalized = cleanString(value).replace(/\s+/g, " ");
     const safeLimit = Number.isFinite(limit) && limit >= 0 ? Math.floor(limit) : 40;
@@ -167,6 +182,7 @@
       ? samples
           .map((sample) => ({
             flowId: cleanString(sample && sample.flowId),
+            scenario: sanitizeProbeScenario(sample && sample.scenario),
             updatedAt: Number.isFinite(sample && sample.updatedAt) ? sample.updatedAt : null,
             requestCandidates: Array.isArray(sample && sample.requestCandidates)
               ? sample.requestCandidates.map(sanitizeRequestProbe).filter(Boolean)
@@ -195,8 +211,11 @@
           return;
         }
         keysInSample.add(key);
-        const existing = candidateByKey.get(key) || { candidate, sampleCount: 0 };
+        const existing = candidateByKey.get(key) || { candidate, sampleCount: 0, scenarios: [] };
         existing.sampleCount += 1;
+        if (!existing.scenarios.includes(sample.scenario)) {
+          existing.scenarios.push(sample.scenario);
+        }
         candidateByKey.set(key, existing);
       });
     });
@@ -208,6 +227,7 @@
         return Object.assign({}, scored, {
           sampleCount: entry.sampleCount,
           stability: `${entry.sampleCount}/${sampleCount}`,
+          scenarios: entry.scenarios,
         });
       })
       .sort((left, right) => {
@@ -226,6 +246,7 @@
       stableCandidates,
       sampleSummaries: sanitizedSamples.map((sample) => ({
         flowId: sample.flowId,
+        scenario: sample.scenario,
         candidateCount: sample.requestCandidates.length,
         updatedAt: sample.updatedAt,
       })),
@@ -454,6 +475,9 @@
         message: typeof input.message === "string" ? input.message.split("\n")[0].trim() : "",
       },
     };
+    if (typeof input.scenario === "string") {
+      payload.payload.scenario = sanitizeProbeScenario(input.scenario);
+    }
     const request = sanitizeRequestProbe(input.request || input);
     if (request) {
       payload.payload.request = request;
@@ -474,6 +498,7 @@
       payload: {
         tabId: Number.isFinite(input.tabId) ? input.tabId : null,
         host: cleanString(input.host).toLowerCase(),
+        scenario: sanitizeProbeScenario(input.scenario),
       },
     };
   }

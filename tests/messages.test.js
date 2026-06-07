@@ -620,6 +620,7 @@ test("createProbeReport compares probe samples and highlights stable candidates"
             flowId: "probe:example.com:short",
             siteId: "page-probe",
             displayName: "Page Probe",
+            scenario: "short_response",
             updatedAt: 1780761601000,
             requestCandidates: [
               {
@@ -644,6 +645,7 @@ test("createProbeReport compares probe samples and highlights stable candidates"
             flowId: "probe:example.com:long",
             siteId: "page-probe",
             displayName: "Page Probe",
+            scenario: "long_response",
             updatedAt: 1780761602000,
             requestCandidates: [
               {
@@ -681,6 +683,7 @@ test("createProbeReport compares probe samples and highlights stable candidates"
         reason: "probe_observed_request",
         sampleCount: 2,
         stability: "2/2",
+        scenarios: ["short_response", "long_response"],
         score: 90,
         signals: ["post_method", "generation_path", "stream_path", "chat_path"],
       },
@@ -688,11 +691,13 @@ test("createProbeReport compares probe samples and highlights stable candidates"
     sampleSummaries: [
       {
         flowId: "probe:example.com:short",
+        scenario: "short_response",
         candidateCount: 2,
         updatedAt: 1780761601000,
       },
       {
         flowId: "probe:example.com:long",
+        scenario: "long_response",
         candidateCount: 2,
         updatedAt: 1780761602000,
       },
@@ -714,12 +719,29 @@ test("createStartPageProbeMessage creates a sanitized active tab probe request",
   assert.deepEqual(createStartPageProbeMessage({
     tabId: 42,
     host: "Example.COM ",
+    scenario: "long_response",
     url: "https://example.com/private?token=secret",
   }), {
     type: MESSAGE_TYPES.START_PAGE_PROBE,
     payload: {
       tabId: 42,
       host: "example.com",
+      scenario: "long_response",
+    },
+  });
+});
+
+test("createStartPageProbeMessage falls back for unknown probe scenarios", () => {
+  assert.deepEqual(createStartPageProbeMessage({
+    tabId: 42,
+    host: "Example.COM ",
+    scenario: "private scenario with token",
+  }), {
+    type: MESSAGE_TYPES.START_PAGE_PROBE,
+    payload: {
+      tabId: 42,
+      host: "example.com",
+      scenario: "unspecified",
     },
   });
 });

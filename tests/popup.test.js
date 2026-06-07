@@ -15,6 +15,7 @@ function createElement(id) {
     checked: false,
     className: "",
     disabled: false,
+    value: "",
     textContent: "",
     addEventListener(type, listener) {
       listeners.set(type, listener);
@@ -60,9 +61,11 @@ function runPopup({
     "probe-readiness": createElement("probe-readiness"),
     "probe-top-candidate": createElement("probe-top-candidate"),
     "probe-risk": createElement("probe-risk"),
+    "probe-scenario": createElement("probe-scenario"),
     "start-page-probe": createElement("start-page-probe"),
     "start-page-probe-status": createElement("start-page-probe-status"),
   };
+  elements["probe-scenario"].value = "short_response";
   const storageWrites = [];
   const runtimeMessages = [];
   const context = {
@@ -166,6 +169,7 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /id="probe-readiness"/);
   assert.match(html, /id="probe-top-candidate"/);
   assert.match(html, /id="probe-risk"/);
+  assert.match(html, /id="probe-scenario"/);
   assert.match(html, /id="copy-diagnostics"/);
   assert.match(html, /id="copy-diagnostics-status"/);
   assert.match(html, /id="start-page-probe"/);
@@ -221,6 +225,7 @@ test("popup can request a page probe for the current unsupported host", () => {
   const popup = runPopup({
     tabUrl: "https://example.com/chat?token=secret",
   });
+  popup.elements["probe-scenario"].value = "long_response";
 
   popup.elements["start-page-probe"].dispatch("click");
 
@@ -230,6 +235,7 @@ test("popup can request a page probe for the current unsupported host", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(popup.runtimeMessages.at(-1).payload)), {
     tabId: 11,
     host: "example.com",
+    scenario: "long_response",
   });
   assert.equal(popup.elements["start-page-probe-status"].textContent, "Probe started for example.com");
   assert.equal(JSON.stringify(popup.runtimeMessages).includes("token=secret"), false);

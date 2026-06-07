@@ -437,6 +437,7 @@ test("page probe diagnostics retain recent probe samples for cross-run compariso
       flowId: "probe:example.com:short",
       siteId: "page-probe",
       displayName: "Page Probe",
+      scenario: "unspecified",
       updatedAt: 1780761600000,
       requestCandidates: [
         {
@@ -461,6 +462,7 @@ test("page probe diagnostics retain recent probe samples for cross-run compariso
       flowId: "probe:example.com:long",
       siteId: "page-probe",
       displayName: "Page Probe",
+      scenario: "unspecified",
       updatedAt: 1780761600000,
       requestCandidates: [
         {
@@ -1551,7 +1553,12 @@ test("starts a page probe by injecting reusable scripts into the active tab", as
     { tab: { id: 7, url: "https://example.com/chat?token=secret" } }
   );
 
-  assert.deepEqual(result, { ok: true, probeStarted: true, host: "example.com" });
+  assert.deepEqual(result, {
+    ok: true,
+    probeStarted: true,
+    host: "example.com",
+    scenario: "unspecified",
+  });
   assert.deepEqual(injected.map((entry) => entry.target), [{ tabId: 7 }, { tabId: 7 }, { tabId: 7 }]);
   assert.deepEqual(injected, [
     {
@@ -1618,7 +1625,7 @@ test("records page probe start diagnostics", async () => {
   });
 
   await service.handleMessage(
-    createStartPageProbeMessage({ tabId: 7, host: "example.com" }),
+    createStartPageProbeMessage({ tabId: 7, host: "example.com", scenario: "tab_switch" }),
     { tab: { id: 7, url: "https://example.com/chat" } }
   );
 
@@ -1626,6 +1633,7 @@ test("records page probe start diagnostics", async () => {
     flowId: "probe:example.com:1780761600000",
     siteId: "page-probe",
     displayName: "Page Probe",
+    scenario: "tab_switch",
     promptExcerpt: "",
     updatedAt: 1780761600000,
     requestCandidates: [],
@@ -1638,6 +1646,40 @@ test("records page probe start diagnostics", async () => {
       },
     ],
   });
+});
+
+test("page probe samples inherit the selected probe scenario", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: {
+      scripting: {
+        executeScript(_details, callback) {
+          callback([{ result: true }]);
+        },
+      },
+      storage: { local },
+    },
+    now: () => 1780761600000,
+  });
+
+  await service.handleMessage(
+    createStartPageProbeMessage({ tabId: 7, host: "example.com", scenario: "canceled_generation" }),
+    { tab: { id: 7, url: "https://example.com/chat" } }
+  );
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:1780761600000",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_matched",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/chat/stream",
+    matched: true,
+    reason: "probe_observed_request",
+  }));
+
+  assert.equal(local.data.popupStatus.diagnostics.probeSamples[0].scenario, "canceled_generation");
 });
 
 test("notification click failures do not throw and clear target", async () => {

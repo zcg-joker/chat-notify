@@ -1,5 +1,7 @@
 # Chat Notify
 
+[中文说明](README.zh-CN.md)
+
 Chat Notify is a privacy-conscious browser extension that sends a browser/system notification when ChatGPT finishes responding.
 
 > Alpha status: this project is ready for early GitHub testing, but it is not yet published on the Chrome Web Store or Edge Add-ons.

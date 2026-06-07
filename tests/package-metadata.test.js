@@ -40,6 +40,7 @@ test("README presents alpha release information and links to docs", () => {
   const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
 
   assert.match(readme, /^# Chat Notify/m);
+  assert.match(readme, /\[中文说明\]\(README\.zh-CN\.md\)/);
   assert.match(readme, /Alpha/i);
   assert.match(readme, /GitHub Releases/i);
   assert.match(readme, /ChatGPT only/i);
@@ -47,6 +48,18 @@ test("README presents alpha release information and links to docs", () => {
   assert.match(readme, /\[Install guide\]\(docs\/INSTALL\.md\)/);
   assert.match(readme, /\[Troubleshooting\]\(docs\/TROUBLESHOOTING\.md\)/);
   assert.match(readme, /\[Release guide\]\(docs\/RELEASE\.md\)/);
+});
+
+test("Chinese README links back to English README and covers alpha basics", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.zh-CN.md"), "utf8");
+
+  assert.match(readme, /^# Chat Notify/m);
+  assert.match(readme, /\[English README\]\(README\.md\)/);
+  assert.match(readme, /Alpha/);
+  assert.match(readme, /ChatGPT/);
+  assert.match(readme, /GitHub Releases/);
+  assert.match(readme, /隐私/);
+  assert.match(readme, /MIT License/);
 });
 
 test("install guide covers release zip and browser loading steps", () => {

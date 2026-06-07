@@ -420,6 +420,17 @@
       .filter((candidate) => candidate.score >= 50)
       .map((candidate) => ({ pathname: candidate.path }))
       .slice(0, 3);
+    const excludedRequestCandidates = Array.isArray(probeComparison.stableIgnoredCandidates)
+      ? probeComparison.stableIgnoredCandidates.map((candidate) => ({
+          requestKind: candidate.requestKind,
+          method: candidate.method,
+          host: candidate.host,
+          path: candidate.path,
+          reason: candidate.reason,
+          stability: candidate.stability,
+          scenarios: Array.isArray(candidate.scenarios) ? candidate.scenarios.slice() : [],
+        })).slice(0, 5)
+      : [];
     const scenarios = Array.isArray(topCandidate.scenarios) ? topCandidate.scenarios : [];
     const siteIdSuggestion = createSuggestionId(host);
     return {
@@ -432,6 +443,7 @@
         hosts: [host],
         generationRequestMatchers: matchers.length ? matchers : [{ pathname: topCandidate.path }],
       },
+      excludedRequestCandidates,
       source: "probeComparison.stableCandidates",
       rationale: [
         `Stable candidate ${topCandidate.path} appeared in ${

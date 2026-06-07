@@ -774,6 +774,17 @@ test("createProbeReport compares probe samples and highlights stable candidates"
       hosts: ["example.com"],
       generationRequestMatchers: [{ pathname: "/api/chat/stream" }],
     },
+    excludedRequestCandidates: [
+      {
+        requestKind: "fetch",
+        method: "POST",
+        host: "example.com",
+        path: "/api/prepare",
+        reason: "path_not_matched",
+        stability: "2/2",
+        scenarios: ["short_response", "long_response"],
+      },
+    ],
     source: "probeComparison.stableCandidates",
     rationale: [
       "Stable candidate /api/chat/stream appeared in 2/2 retained probe samples.",

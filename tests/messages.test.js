@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   MESSAGE_TYPES,
   createDiagnosticEventMessage,
+  createProbeReport,
   createResponseCompletedMessage,
   createTestNotificationMessage,
 } = require("../src/shared/messages.js");
@@ -134,6 +135,145 @@ test("createDiagnosticEventMessage keeps sanitized request probe metadata only",
   const serialized = JSON.stringify(message);
   assert.equal(serialized.includes("rpcids=secret"), false);
   assert.equal(serialized.includes("prompt and token"), false);
+  assert.equal(serialized.includes("Bearer token"), false);
+});
+
+test("createProbeReport builds a sanitized adapter-focused report", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: true,
+      url: "https://chatgpt.com/c/secret-conversation?token=secret",
+      host: "chatgpt.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: true,
+    },
+    popupStatus: {
+      diagnostics: {
+        latestFlow: {
+          flowId: "chatgpt:1780761600000:1",
+          siteId: "chatgpt",
+          displayName: "ChatGPT",
+          promptExcerpt: "summarize this paper with private details",
+          updatedAt: 1780761602000,
+          events: [
+            {
+              eventType: "request_probe_ignored",
+              request: {
+                requestKind: "fetch",
+                method: "POST",
+                host: "chatgpt.com",
+                path: "/backend-api/f/conversation/prepare?token=secret",
+                matched: false,
+                reason: "path_not_matched",
+              },
+            },
+            {
+              eventType: "request_probe_matched",
+              request: {
+                requestKind: "fetch",
+                method: "POST",
+                host: "chatgpt.com",
+                path: "/backend-api/f/conversation?token=secret",
+                matched: true,
+                reason: "matched_generation_request",
+              },
+            },
+            {
+              eventType: "lifecycle_completed",
+              message: "body secret",
+              requestBody: "must not leak",
+              headers: { authorization: "Bearer token" },
+            },
+            { eventType: "notification_sent" },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(report, {
+    schemaVersion: 1,
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: true,
+      host: "chatgpt.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: true,
+    },
+    latestFlow: {
+      flowId: "chatgpt:1780761600000:1",
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      promptExcerpt: "summarize this paper with private detail...",
+      updatedAt: 1780761602000,
+      summary: {
+        totalEvents: 4,
+        requestProbeCount: 2,
+        matchedRequestCount: 1,
+        ignoredRequestCount: 1,
+        lifecycleEventTypes: ["lifecycle_completed"],
+        notificationEventTypes: ["notification_sent"],
+      },
+      matchedRequests: [
+        {
+          requestKind: "fetch",
+          method: "POST",
+          host: "chatgpt.com",
+          path: "/backend-api/f/conversation",
+          matched: true,
+          reason: "matched_generation_request",
+        },
+      ],
+      ignoredRequests: [
+        {
+          requestKind: "fetch",
+          method: "POST",
+          host: "chatgpt.com",
+          path: "/backend-api/f/conversation/prepare",
+          matched: false,
+          reason: "path_not_matched",
+        },
+      ],
+      events: [
+        {
+          eventType: "request_probe_ignored",
+          status: "ok",
+          request: {
+            requestKind: "fetch",
+            method: "POST",
+            host: "chatgpt.com",
+            path: "/backend-api/f/conversation/prepare",
+            matched: false,
+            reason: "path_not_matched",
+          },
+        },
+        {
+          eventType: "request_probe_matched",
+          status: "ok",
+          request: {
+            requestKind: "fetch",
+            method: "POST",
+            host: "chatgpt.com",
+            path: "/backend-api/f/conversation",
+            matched: true,
+            reason: "matched_generation_request",
+          },
+        },
+        { eventType: "lifecycle_completed", status: "ok" },
+        { eventType: "notification_sent", status: "ok" },
+      ],
+    },
+  });
+
+  const serialized = JSON.stringify(report);
+  assert.equal(serialized.includes("secret-conversation"), false);
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("must not leak"), false);
   assert.equal(serialized.includes("Bearer token"), false);
 });
 

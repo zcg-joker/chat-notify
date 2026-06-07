@@ -11,6 +11,11 @@
   const activitySite = document.getElementById("activity-site");
   const activityPrompt = document.getElementById("activity-prompt");
   const activityTimeline = document.getElementById("activity-timeline");
+  const copyDiagnosticsButton = document.getElementById("copy-diagnostics");
+  const copyDiagnosticsStatus = document.getElementById("copy-diagnostics-status");
+  let latestPopupStatus = null;
+  let latestPageInfo = { supported: false, host: "" };
+  let latestSettings = { enabled: true, debugLogs: false };
 
   const ACTIVITY_LABELS = {
     send_captured: "Send captured",
@@ -108,6 +113,7 @@
 
   function renderPopupStatus(response) {
     const status = response && (response.popupStatus || response.status);
+    latestPopupStatus = status || null;
     renderNotificationHealth(status && status.notificationHealth);
     renderLastCompletion(status && status.lastCompletion);
     renderDiagnostics(status && status.diagnostics);
@@ -120,6 +126,10 @@
   chrome.storage.sync.get({ enabled: true, debugLogs: false }, (settings) => {
     enabledToggle.checked = Boolean(settings.enabled);
     debugLogsToggle.checked = Boolean(settings.debugLogs);
+    latestSettings = {
+      enabled: enabledToggle.checked,
+      debugLogs: debugLogsToggle.checked,
+    };
     renderExtensionStatus();
   });
 
@@ -136,15 +146,21 @@
       (url.hostname === "chatgpt.com" ||
         url.hostname === "chat.openai.com" ||
         url.hostname === "gemini.google.com");
+    latestPageInfo = {
+      supported: Boolean(supported),
+      host: url && url.hostname ? url.hostname : "",
+    };
     siteStatus.textContent = supported ? "Current page is supported" : "Current page is not supported";
   });
 
   enabledToggle.addEventListener("change", () => {
     renderExtensionStatus();
+    latestSettings.enabled = enabledToggle.checked;
     chrome.storage.sync.set({ enabled: enabledToggle.checked });
   });
 
   debugLogsToggle.addEventListener("change", () => {
+    latestSettings.debugLogs = debugLogsToggle.checked;
     chrome.storage.sync.set({ debugLogs: debugLogsToggle.checked });
   });
 
@@ -168,5 +184,27 @@
       }
       renderNotificationHealth({ state: "failed", message: response && response.error });
     });
+  });
+
+  copyDiagnosticsButton.addEventListener("click", () => {
+    const report = ChatNotify.createProbeReport({
+      generatedAt: Date.now(),
+      currentPage: latestPageInfo,
+      settings: latestSettings,
+      popupStatus: latestPopupStatus,
+    });
+    const text = JSON.stringify(report, null, 2);
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      copyDiagnosticsStatus.textContent = "Copy failed";
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => {
+        copyDiagnosticsStatus.textContent = "Diagnostics copied";
+      },
+      () => {
+        copyDiagnosticsStatus.textContent = "Copy failed";
+      }
+    );
   });
 })();

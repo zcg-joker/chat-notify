@@ -38,6 +38,7 @@ function runPopup({
   },
   testNotificationResponse = { ok: true, notificationId: "test-id" },
   runtimeLastError = null,
+  clipboardWriteText,
 } = {}) {
   const source = fs.readFileSync(POPUP_JS_PATH, "utf8");
   const elements = {
@@ -53,6 +54,8 @@ function runPopup({
     "activity-site": createElement("activity-site"),
     "activity-prompt": createElement("activity-prompt"),
     "activity-timeline": createElement("activity-timeline"),
+    "copy-diagnostics": createElement("copy-diagnostics"),
+    "copy-diagnostics-status": createElement("copy-diagnostics-status"),
   };
   const storageWrites = [];
   const runtimeMessages = [];
@@ -97,9 +100,24 @@ function runPopup({
         GET_POPUP_STATUS: "GET_POPUP_STATUS",
         TEST_NOTIFICATION: "TEST_NOTIFICATION",
       },
+      createProbeReport(input) {
+        return {
+          schemaVersion: 1,
+          currentPage: input.currentPage,
+          settings: input.settings,
+          popupStatus: input.popupStatus,
+        };
+      },
       createTestNotificationMessage() {
         return { type: "TEST_NOTIFICATION", payload: {} };
       },
+    },
+    navigator: {
+      clipboard: clipboardWriteText
+        ? {
+            writeText: clipboardWriteText,
+          }
+        : undefined,
     },
     URL,
   };
@@ -130,6 +148,8 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /id="activity-site"/);
   assert.match(html, /id="activity-prompt"/);
   assert.match(html, /id="activity-timeline"/);
+  assert.match(html, /id="copy-diagnostics"/);
+  assert.match(html, /id="copy-diagnostics-status"/);
   assert.match(html, /src="\.\.\/shared\/messages\.js"/);
   assert.match(html, /src="\.\/popup\.js"/);
   assert.match(css, /\.popup/);
@@ -429,6 +449,69 @@ test("popup timeline keeps ignored request probes when no meaningful events exis
     popup.elements["activity-timeline"].textContent,
     "Request ignored (fetch POST chatgpt.com/ces/v1/t) -> Request ignored (fetch POST chatgpt.com/backend-api/f/conversation/prepare)",
   );
+});
+
+test("popup copies sanitized probe diagnostics report", async () => {
+  const copied = [];
+  const popup = runPopup({
+    enabled: true,
+    debugLogs: true,
+    tabUrl: "https://chatgpt.com/c/secret-conversation?token=secret",
+    clipboardWriteText(text) {
+      copied.push(text);
+      return Promise.resolve();
+    },
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "sent", siteId: "chatgpt", updatedAt: 1780761600000 },
+        diagnostics: {
+          latestFlow: {
+            siteId: "chatgpt",
+            displayName: "ChatGPT",
+            events: [
+              {
+                eventType: "request_probe_matched",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/backend-api/f/conversation",
+                  matched: true,
+                  reason: "matched_generation_request",
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  popup.elements["copy-diagnostics"].dispatch("click");
+  await Promise.resolve();
+
+  assert.equal(copied.length, 1);
+  assert.equal(JSON.parse(copied[0]).currentPage.host, "chatgpt.com");
+  assert.equal(JSON.parse(copied[0]).settings.debugLogs, true);
+  assert.equal(copied[0].includes("secret-conversation"), false);
+  assert.equal(copied[0].includes("token=secret"), false);
+  assert.equal(popup.elements["copy-diagnostics-status"].textContent, "Diagnostics copied");
+});
+
+test("popup reports copy diagnostics failure", async () => {
+  const popup = runPopup({
+    clipboardWriteText() {
+      return Promise.reject(new Error("clipboard unavailable"));
+    },
+  });
+
+  popup.elements["copy-diagnostics"].dispatch("click");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(popup.elements["copy-diagnostics-status"].textContent, "Copy failed");
 });
 
 test("popup renders unknown diagnostics event types with a neutral label", () => {

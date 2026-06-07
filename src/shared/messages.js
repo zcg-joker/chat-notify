@@ -62,6 +62,84 @@
     };
   }
 
+  function uniqueStrings(values) {
+    return Array.from(new Set(values.filter((value) => typeof value === "string" && value)));
+  }
+
+  function cloneEventForReport(event = {}) {
+    const result = {
+      eventType: cleanString(event.eventType || event.type),
+      status: event.status === "failed" ? "failed" : "ok",
+    };
+    const request = sanitizeRequestProbe(event.request || {});
+    if (request) {
+      result.request = request;
+    }
+    return result;
+  }
+
+  function createProbeReport(input = {}) {
+    const status = input.popupStatus || {};
+    const diagnostics = status.diagnostics || {};
+    const flow = diagnostics.latestFlow || null;
+    const events = flow && Array.isArray(flow.events) ? flow.events.map(cloneEventForReport) : [];
+    const requestEvents = events.filter((event) => event.request);
+    const matchedRequests = requestEvents
+      .filter((event) => event.request.matched)
+      .map((event) => event.request);
+    const ignoredRequests = requestEvents
+      .filter((event) => !event.request.matched)
+      .map((event) => event.request);
+    const lifecycleEventTypes = uniqueStrings(
+      events
+        .map((event) => event.eventType)
+        .filter((eventType) => eventType.startsWith("lifecycle_"))
+    );
+    const notificationEventTypes = uniqueStrings(
+      events
+        .map((event) => event.eventType)
+        .filter((eventType) => eventType.startsWith("notification_"))
+    );
+    const currentPage = input.currentPage || {};
+    const settings = input.settings || {};
+    const report = {
+      schemaVersion: 1,
+      generatedAt: Number.isFinite(input.generatedAt) ? input.generatedAt : Date.now(),
+      currentPage: {
+        supported: Boolean(currentPage.supported),
+        host: cleanString(currentPage.host).toLowerCase(),
+      },
+      settings: {
+        enabled: Boolean(settings.enabled),
+        debugLogs: Boolean(settings.debugLogs),
+      },
+      latestFlow: null,
+    };
+
+    if (flow) {
+      report.latestFlow = {
+        flowId: cleanString(flow.flowId),
+        siteId: cleanString(flow.siteId),
+        displayName: cleanString(flow.displayName),
+        promptExcerpt: createPromptExcerpt(flow.promptExcerpt || ""),
+        updatedAt: Number.isFinite(flow.updatedAt) ? flow.updatedAt : null,
+        summary: {
+          totalEvents: events.length,
+          requestProbeCount: requestEvents.length,
+          matchedRequestCount: matchedRequests.length,
+          ignoredRequestCount: ignoredRequests.length,
+          lifecycleEventTypes,
+          notificationEventTypes,
+        },
+        matchedRequests,
+        ignoredRequests,
+        events,
+      };
+    }
+
+    return report;
+  }
+
   function createResponseCompletedMessage(input = {}) {
     return {
       type: MESSAGE_TYPES.AI_RESPONSE_COMPLETED,
@@ -107,6 +185,7 @@
   return {
     MESSAGE_TYPES,
     createDiagnosticEventMessage,
+    createProbeReport,
     createResponseCompletedMessage,
     createTestNotificationMessage,
   };

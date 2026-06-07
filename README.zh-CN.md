@@ -96,6 +96,8 @@ Debug logs 默认关闭。开启后，日志可能包含问题摘要，因此不
 - 如何开启 Debug logs。
 - 如何查看页面 console 和 service worker 日志。
 
+开发者适配新的 AI 网站时，应该先基于脱敏探测证据分析请求行为，而不是直接猜测。具体流程见 [适配探测流程](docs/ADAPTER_PROBE_WORKFLOW.md)。
+
 ## 当前限制
 
 - Gemini 支持目前是 MVP，目标站点是 `gemini.google.com`。

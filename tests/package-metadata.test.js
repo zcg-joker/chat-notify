@@ -50,6 +50,7 @@ test("README presents alpha release information and links to docs", () => {
   assert.match(readme, /popup status/i);
   assert.match(readme, /\[Install guide\]\(docs\/INSTALL\.md\)/);
   assert.match(readme, /\[Troubleshooting\]\(docs\/TROUBLESHOOTING\.md\)/);
+  assert.match(readme, /\[Adapter probe workflow\]\(docs\/ADAPTER_PROBE_WORKFLOW\.md\)/);
   assert.match(readme, /\[Release guide\]\(docs\/RELEASE\.md\)/);
 });
 
@@ -82,6 +83,7 @@ test("Chinese README links back to English README and covers alpha basics", () =
   assert.match(readme, /点击通知/);
   assert.match(readme, /状态/);
   assert.match(readme, /MIT License/);
+  assert.match(readme, /\[适配探测流程\]\(docs\/ADAPTER_PROBE_WORKFLOW\.md\)/);
 });
 
 test("Chinese README mentions Gemini and recent activity diagnostics", () => {
@@ -148,6 +150,22 @@ test("troubleshooting guide explains diagnostics privacy boundaries", () => {
   assert.match(guide, /flow metadata/i);
   assert.match(guide, /do not store full prompt/i);
   assert.match(guide, /request or response bodies/i);
+});
+
+test("adapter probe workflow explains capture, interpretation, and privacy boundaries", () => {
+  const workflow = fs.readFileSync(path.join(ROOT, "docs", "ADAPTER_PROBE_WORKFLOW.md"), "utf8");
+
+  assert.match(workflow, /^# Adapter Probe Workflow/m);
+  assert.match(workflow, /Copy diagnostics/i);
+  assert.match(workflow, /currentPage\.host/);
+  assert.match(workflow, /matchedRequests/);
+  assert.match(workflow, /ignoredRequests/);
+  assert.match(workflow, /lifecycleEventTypes/);
+  assert.match(workflow, /notificationEventTypes/);
+  assert.match(workflow, /do not copy raw request bodies/i);
+  assert.match(workflow, /Authorization/i);
+  assert.match(workflow, /adapter checklist/i);
+  assert.match(workflow, /unsupported site/i);
 });
 
 test("release guide covers maintainer package and GitHub release flow", () => {

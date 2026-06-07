@@ -79,6 +79,8 @@ Debug logs are disabled by default. When enabled, logs may include prompt excerp
 
 If notifications do not appear, check popup Recent activity first to see where the latest monitoring flow reached. Then enable debug logs for console details if needed. For detailed steps, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
+Developers adapting new AI sites should start from sanitized probe evidence instead of guessing request behavior. See the [Adapter probe workflow](docs/ADAPTER_PROBE_WORKFLOW.md).
+
 ## Current Limits
 
 - Gemini support is MVP and targets `gemini.google.com`.

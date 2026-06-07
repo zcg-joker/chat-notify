@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   MESSAGE_TYPES,
+  createDiagnosticEventMessage,
   createResponseCompletedMessage,
   createTestNotificationMessage,
 } = require("../src/shared/messages.js");
@@ -10,6 +11,7 @@ const { createNotificationService } = require("../src/background/service-worker.
 const DEFAULT_POPUP_STATUS = {
   notificationHealth: { state: "not_tested", message: "", updatedAt: null },
   lastCompletion: { state: "none", siteId: "", updatedAt: null },
+  diagnostics: { latestFlow: null },
 };
 
 function createFakeStorageArea(initial = {}) {
@@ -156,15 +158,138 @@ test("creates completion notification with prompt excerpt", async () => {
     tabId: 3,
     windowId: 9,
     createdAt: 1780761600000,
+    flowId: "",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "Summarize this paper...",
   });
   assert.equal(JSON.stringify(session.data.notificationTargets).includes("conversation:a"), false);
-  assert.equal(JSON.stringify(session.data.notificationTargets).includes("Summarize this paper"), false);
+  assert.equal(JSON.stringify(session.data.notificationTargets).includes("chatgpt.com"), false);
   assert.deepEqual(local.data.popupStatus.lastCompletion, {
     state: "sent",
     siteId: "chatgpt",
     updatedAt: 1780761600000,
   });
   assert.deepEqual(local.data.popupStatus.notificationHealth, DEFAULT_POPUP_STATUS.notificationHealth);
+});
+
+test("records diagnostic events in popup status without raw session metadata", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "secret prompt",
+    eventType: "send_captured",
+    status: "ok",
+    message: "captured",
+    sessionKey: "conversation:a",
+    url: "https://chatgpt.com/c/private",
+  }));
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(local.data.popupStatus.diagnostics.latestFlow, {
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "secret prompt",
+    updatedAt: 1780761600000,
+    events: [
+      {
+        eventType: "send_captured",
+        status: "ok",
+        message: "captured",
+        updatedAt: 1780761600000,
+      },
+    ],
+  });
+  const serialized = JSON.stringify(local.data.popupStatus);
+  assert.equal(serialized.includes("conversation:a"), false);
+  assert.equal(serialized.includes("https://chatgpt.com"), false);
+});
+
+test("diagnostic events are bounded to the latest eight events", async () => {
+  let time = 1780761600000;
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => {
+      time += 1;
+      return time;
+    },
+  });
+
+  for (let index = 1; index <= 10; index += 1) {
+    await service.handleMessage(createDiagnosticEventMessage({
+      flowId: "chatgpt:flow",
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      promptExcerpt: "prompt",
+      eventType: `event_${index}`,
+      message: `message ${index}`,
+    }));
+  }
+
+  assert.deepEqual(
+    local.data.popupStatus.diagnostics.latestFlow.events.map((event) => event.eventType),
+    ["event_3", "event_4", "event_5", "event_6", "event_7", "event_8", "event_9", "event_10"]
+  );
+});
+
+test("concurrent diagnostic events on one flow preserve both events", async () => {
+  const local = createDelayedStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  const first = service.handleMessage(createDiagnosticEventMessage({
+    flowId: "chatgpt:flow",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "prompt",
+    eventType: "lifecycle_started",
+  }));
+  const second = service.handleMessage(createDiagnosticEventMessage({
+    flowId: "chatgpt:flow",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "prompt",
+    eventType: "lifecycle_completed",
+  }));
+
+  for (let attempt = 0; attempt < 20 && local.pendingGetCount < 1; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(local.pendingGetCount, 1);
+  local.flushNextGet();
+  for (let attempt = 0; attempt < 20 && local.pendingSetCount < 1; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(local.pendingSetCount, 1);
+  local.flushNextSet();
+  for (let attempt = 0; attempt < 20 && local.pendingGetCount < 1; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(local.pendingGetCount, 1);
+  local.flushNextGet();
+  for (let attempt = 0; attempt < 20 && local.pendingSetCount < 1; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(local.pendingSetCount, 1);
+  local.flushNextSet();
+
+  await Promise.all([first, second]);
+
+  assert.deepEqual(
+    local.data.popupStatus.diagnostics.latestFlow.events.map((event) => event.eventType),
+    ["lifecycle_started", "lifecycle_completed"]
+  );
 });
 
 test("uses fallback notification message when excerpt is empty", async () => {
@@ -441,6 +566,7 @@ test("popup status falls back to memory when local storage fails", async () => {
         updatedAt: 1780761600000,
       },
       lastCompletion: DEFAULT_POPUP_STATUS.lastCompletion,
+      diagnostics: DEFAULT_POPUP_STATUS.diagnostics,
     },
   });
 });
@@ -623,6 +749,123 @@ test("completion notification create failure clears pre-stored target", async ()
 
   assert.equal(result.ok, false);
   assert.deepEqual(session.data.notificationTargets, {});
+});
+
+test("completion notifications record sent and failed diagnostics", async () => {
+  const successLocal = createFakeStorageArea();
+  const successSession = createFakeStorageArea();
+  const successService = createNotificationService({
+    chromeApi: {
+      runtime: {},
+      storage: { local: successLocal, session: successSession },
+      notifications: {
+        create(id, _options, callback) {
+          callback(id);
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  await successService.handleMessage(createResponseCompletedMessage({
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    sessionKey: "conversation:a",
+    sourceTabId: 3,
+    promptExcerpt: "hello",
+  }));
+
+  assert.deepEqual(successLocal.data.popupStatus.diagnostics.latestFlow.events.at(-1), {
+    eventType: "notification_sent",
+    status: "ok",
+    message: "",
+    updatedAt: 1780761600000,
+  });
+  assert.deepEqual(successSession.data.notificationTargets[
+    Object.keys(successSession.data.notificationTargets)[0]
+  ], {
+    notificationId: Object.keys(successSession.data.notificationTargets)[0],
+    tabId: 3,
+    createdAt: 1780761600000,
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "hello",
+  });
+  assert.equal(JSON.stringify(successSession.data.notificationTargets).includes("conversation:a"), false);
+
+  const failureLocal = createFakeStorageArea();
+  const failureSession = createFakeStorageArea();
+  const chromeApi = {
+    runtime: {},
+    storage: { local: failureLocal, session: failureSession },
+    notifications: {
+      create(_id, _options, callback) {
+        chromeApi.runtime.lastError = { message: "notifications permission missing" };
+        callback("");
+      },
+    },
+  };
+  const failureService = createNotificationService({
+    chromeApi,
+    now: () => 1780761600000,
+  });
+
+  await failureService.handleMessage(createResponseCompletedMessage({
+    flowId: "chatgpt:1780761600000:2",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    sessionKey: "conversation:b",
+    sourceTabId: 3,
+    promptExcerpt: "hello",
+  }));
+
+  assert.deepEqual(failureLocal.data.popupStatus.diagnostics.latestFlow.events.at(-1), {
+    eventType: "notification_failed",
+    status: "failed",
+    message: "notifications permission missing",
+    updatedAt: 1780761600000,
+  });
+  assert.equal(JSON.stringify(failureLocal.data.popupStatus).includes("conversation:b"), false);
+});
+
+test("notification target metadata stores only sanitized prompt excerpts", async () => {
+  const local = createFakeStorageArea();
+  const session = createFakeStorageArea();
+  const longPrompt = [
+    "  first line with spacing",
+    "second line keeps going with enough text to exceed the metadata limit",
+    "third line must not be persisted in full",
+  ].join("\n");
+  const service = createNotificationService({
+    chromeApi: {
+      runtime: {},
+      storage: { local, session },
+      notifications: {
+        create(id, _options, callback) {
+          callback(id);
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(createResponseCompletedMessage({
+    flowId: "chatgpt:1780761600000:1",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    sessionKey: "conversation:a",
+    sourceTabId: 3,
+    promptExcerpt: longPrompt,
+  }));
+
+  const target = session.data.notificationTargets[result.notificationId];
+  assert.equal(target.promptExcerpt, "first line with spacing second line keep...");
+  assert.equal(target.promptExcerpt.includes("\n"), false);
+  assert.equal(target.promptExcerpt.includes("third line"), false);
+  assert.equal(JSON.stringify(session.data.notificationTargets).includes(longPrompt), false);
+  assert.equal(local.data.popupStatus.diagnostics.latestFlow.promptExcerpt, target.promptExcerpt);
 });
 
 test("notification targets fall back to memory when session storage fails", async () => {
@@ -856,6 +1099,10 @@ test("concurrent completion notifications preserve both click targets", async ()
     tabId: 4,
     windowId: 9,
     createdAt: 1780761600000,
+    flowId: "",
+    siteId: "chatgpt",
+    displayName: "ChatGPT",
+    promptExcerpt: "second",
   });
   assert.deepEqual(updates, [
     { type: "window", windowId: 9, options: { focused: true } },
@@ -884,6 +1131,98 @@ test("clicking unknown notification is ignored", async () => {
   const result = await service.handleNotificationClicked("missing");
 
   assert.deepEqual(result, { ok: false, ignored: true });
+});
+
+test("notification clicks record focus diagnostics when target metadata is available", async () => {
+  const successLocal = createFakeStorageArea();
+  const successSession = createFakeStorageArea({
+    notificationTargets: {
+      "bound-id": {
+        notificationId: "bound-id",
+        tabId: 3,
+        windowId: 9,
+        createdAt: 1780761600000,
+        flowId: "chatgpt:1780761600000:1",
+        siteId: "chatgpt",
+        displayName: "ChatGPT",
+        promptExcerpt: "hello",
+        sessionKey: "conversation:a",
+        url: "https://chatgpt.com/c/private",
+      },
+    },
+  });
+  const successService = createNotificationService({
+    chromeApi: {
+      runtime: {},
+      storage: { local: successLocal, session: successSession },
+      windows: {
+        update(_windowId, _options, callback) {
+          callback();
+        },
+      },
+      tabs: {
+        update(_tabId, _options, callback) {
+          callback();
+        },
+      },
+    },
+    now: () => 1780761600000,
+  });
+
+  await successService.handleNotificationClicked("bound-id");
+
+  assert.deepEqual(successLocal.data.popupStatus.diagnostics.latestFlow.events.at(-1), {
+    eventType: "notification_focus_succeeded",
+    status: "ok",
+    message: "",
+    updatedAt: 1780761600000,
+  });
+  assert.equal(JSON.stringify(successLocal.data.popupStatus).includes("conversation:a"), false);
+  assert.equal(JSON.stringify(successLocal.data.popupStatus).includes("chatgpt.com"), false);
+
+  const failureLocal = createFakeStorageArea();
+  const failureSession = createFakeStorageArea({
+    notificationTargets: {
+      "bound-id": {
+        notificationId: "bound-id",
+        tabId: 3,
+        windowId: 9,
+        createdAt: 1780761600000,
+        flowId: "chatgpt:1780761600000:2",
+        siteId: "chatgpt",
+        displayName: "ChatGPT",
+        promptExcerpt: "hello",
+      },
+    },
+  });
+  const chromeApi = {
+    runtime: {},
+    storage: { local: failureLocal, session: failureSession },
+    windows: {
+      update(_windowId, _options, callback) {
+        chromeApi.runtime.lastError = { message: "No window with id: 9" };
+        callback();
+      },
+    },
+    tabs: {
+      update(_tabId, _options, callback) {
+        callback();
+      },
+    },
+  };
+  const failureService = createNotificationService({
+    chromeApi,
+    now: () => 1780761600000,
+  });
+
+  await failureService.handleNotificationClicked("bound-id");
+
+  assert.deepEqual(failureLocal.data.popupStatus.diagnostics.latestFlow.events.at(-1), {
+    eventType: "notification_focus_failed",
+    status: "failed",
+    message: "No window with id: 9",
+    updatedAt: 1780761600000,
+  });
 });
 
 test("completion notification failure updates last completion as failed", async () => {
@@ -920,7 +1259,6 @@ test("completion notification failure updates last completion as failed", async 
     siteId: "chatgpt",
     updatedAt: 1780761600000,
   });
-  assert.equal(JSON.stringify(local.data.popupStatus).includes("secret prompt"), false);
   assert.equal(JSON.stringify(local.data.popupStatus).includes("conversation:a"), false);
 });
 

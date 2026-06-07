@@ -26,7 +26,9 @@
   const DEFAULT_POPUP_STATUS = Object.freeze({
     notificationHealth: Object.freeze({ state: "not_tested", message: "", updatedAt: null }),
     lastCompletion: Object.freeze({ state: "none", siteId: "", updatedAt: null }),
+    diagnostics: Object.freeze({ latestFlow: null }),
   });
+  const MAX_DIAGNOSTIC_EVENTS = 8;
 
   function log(level, message, detail) {
     if (typeof console === "undefined" || typeof console[level] !== "function") {
@@ -62,6 +64,19 @@
     };
   }
 
+  function sanitizePromptExcerpt(value, limit = 40) {
+    const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+    const safeLimit = Number.isFinite(limit) && limit >= 0 ? Math.floor(limit) : 40;
+    const characters = Array.from(normalized);
+    if (characters.length === 0) {
+      return "";
+    }
+    if (characters.length <= safeLimit) {
+      return normalized;
+    }
+    return `${characters.slice(0, safeLimit).join("")}...`;
+  }
+
   function createNotificationService(options = {}) {
     const chromeApi = options.chromeApi || globalThis.chrome;
     const now = typeof options.now === "function" ? options.now : () => Date.now();
@@ -70,6 +85,7 @@
     let notificationTargetsMemoryAuthoritative = false;
     let popupStatusMemoryAuthoritative = false;
     let notificationCounter = 0;
+    let popupStatusMutation = Promise.resolve();
     let notificationTargetMutation = Promise.resolve();
 
     function isFiniteNumber(value) {
@@ -89,6 +105,27 @@
           DEFAULT_POPUP_STATUS.lastCompletion,
           source.lastCompletion || {}
         ),
+        diagnostics: {
+          latestFlow: source.diagnostics && source.diagnostics.latestFlow
+            ? {
+                flowId: source.diagnostics.latestFlow.flowId || "",
+                siteId: source.diagnostics.latestFlow.siteId || "",
+                displayName: source.diagnostics.latestFlow.displayName || "",
+                promptExcerpt: sanitizePromptExcerpt(source.diagnostics.latestFlow.promptExcerpt),
+                updatedAt: isFiniteNumber(source.diagnostics.latestFlow.updatedAt)
+                  ? source.diagnostics.latestFlow.updatedAt
+                  : null,
+                events: Array.isArray(source.diagnostics.latestFlow.events)
+                  ? source.diagnostics.latestFlow.events.slice(-MAX_DIAGNOSTIC_EVENTS).map((event) => ({
+                      eventType: event.eventType || "",
+                      status: event.status === "failed" ? "failed" : "ok",
+                      message: event.message || "",
+                      updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
+                    }))
+                  : [],
+              }
+            : null,
+        },
       };
     }
 
@@ -214,11 +251,51 @@
       return sanitized;
     }
 
+    function mutatePopupStatus(mutator) {
+      const mutation = popupStatusMutation.then(async () => {
+        const current = await getPopupStatus();
+        const nextStatus = mutator(current) || current;
+        return setPopupStatus(nextStatus);
+      });
+      popupStatusMutation = mutation.catch(() => {});
+      return mutation;
+    }
+
     async function patchPopupStatus(patch) {
-      const current = await getPopupStatus();
-      return setPopupStatus({
+      return mutatePopupStatus((current) => ({
         notificationHealth: Object.assign({}, current.notificationHealth, patch.notificationHealth || {}),
         lastCompletion: Object.assign({}, current.lastCompletion, patch.lastCompletion || {}),
+        diagnostics: patch.diagnostics || current.diagnostics,
+      }));
+    }
+
+    async function recordDiagnosticEvent(input = {}) {
+      return mutatePopupStatus((current) => {
+        const payload = messages.createDiagnosticEventMessage
+          ? messages.createDiagnosticEventMessage(input).payload
+          : input;
+        const currentFlow = current.diagnostics && current.diagnostics.latestFlow;
+        const event = {
+          eventType: payload.eventType || "",
+          status: payload.status === "failed" ? "failed" : "ok",
+          message: payload.message || "",
+          updatedAt: now(),
+        };
+        const sameFlow = currentFlow && currentFlow.flowId === (payload.flowId || "");
+        const previousEvents = sameFlow && Array.isArray(currentFlow.events) ? currentFlow.events : [];
+        const latestFlow = {
+          flowId: payload.flowId || "",
+          siteId: payload.siteId || "",
+          displayName: payload.displayName || "",
+          promptExcerpt: sanitizePromptExcerpt(payload.promptExcerpt),
+          updatedAt: event.updatedAt,
+          events: previousEvents.concat(event).slice(-MAX_DIAGNOSTIC_EVENTS),
+        };
+        return {
+          notificationHealth: current.notificationHealth,
+          lastCompletion: current.lastCompletion,
+          diagnostics: { latestFlow },
+        };
       });
     }
 
@@ -245,6 +322,10 @@
           notificationId: String(target.notificationId),
           tabId: target.tabId,
           createdAt: isFiniteNumber(target.createdAt) ? target.createdAt : now(),
+          flowId: typeof target.flowId === "string" ? target.flowId : "",
+          siteId: typeof target.siteId === "string" ? target.siteId : "",
+          displayName: typeof target.displayName === "string" ? target.displayName : "",
+          promptExcerpt: sanitizePromptExcerpt(target.promptExcerpt),
         };
         if (isFiniteNumber(target.windowId)) {
           result[notificationId].windowId = target.windowId;
@@ -267,7 +348,7 @@
       return mutation;
     }
 
-    async function storeNotificationTarget(notificationId, sourceTabId, sender) {
+    async function storeNotificationTarget(notificationId, sourceTabId, sender, payload = {}) {
       if (!isFiniteNumber(sourceTabId)) {
         return;
       }
@@ -275,6 +356,10 @@
         notificationId,
         tabId: sourceTabId,
         createdAt: now(),
+        flowId: typeof payload.flowId === "string" ? payload.flowId : "",
+        siteId: typeof payload.siteId === "string" ? payload.siteId : "",
+        displayName: typeof payload.displayName === "string" ? payload.displayName : "",
+        promptExcerpt: sanitizePromptExcerpt(payload.promptExcerpt),
       };
       if (
         sender &&
@@ -377,6 +462,11 @@
         return { ok: true, popupStatus: await getPopupStatus() };
       }
 
+      if (message && message.type === MESSAGE_TYPES.DIAGNOSTIC_EVENT) {
+        await recordDiagnosticEvent(message.payload || {});
+        return { ok: true };
+      }
+
       if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
         const id = `chat-notify:test:${now()}`;
         const notificationResult = await notify(id, {
@@ -431,11 +521,20 @@
       ].join(":");
 
       if (isFiniteNumber(sourceTabId)) {
-        await storeNotificationTarget(id, sourceTabId, sender);
+        await storeNotificationTarget(id, sourceTabId, sender, payload);
       }
       const notificationResult = await notify(id, buildCompletionNotification(payload, chromeApi));
       if (!notificationResult.ok) {
         await clearNotificationTarget(id);
+        await recordDiagnosticEvent({
+          flowId: payload.flowId || "",
+          siteId: payload.siteId || "",
+          displayName: payload.displayName || "",
+          promptExcerpt: payload.promptExcerpt || "",
+          eventType: "notification_failed",
+          status: "failed",
+          message: notificationResult.error || "",
+        });
         await patchPopupStatus({
           lastCompletion: {
             state: "failed",
@@ -446,6 +545,13 @@
         writeLog("warn", "completion notification failed", notificationResult.error);
         return { ok: false, error: notificationResult.error, notificationId: id };
       }
+      await recordDiagnosticEvent({
+        flowId: payload.flowId || "",
+        siteId: payload.siteId || "",
+        displayName: payload.displayName || "",
+        promptExcerpt: payload.promptExcerpt || "",
+        eventType: "notification_sent",
+      });
       await patchPopupStatus({
         lastCompletion: {
           state: "sent",
@@ -474,8 +580,24 @@
       await clearNotificationTarget(notificationId);
 
       if (focusResult.ok && tabResult.ok) {
+        await recordDiagnosticEvent({
+          flowId: target.flowId || "",
+          siteId: target.siteId || "",
+          displayName: target.displayName || "",
+          promptExcerpt: target.promptExcerpt || "",
+          eventType: "notification_focus_succeeded",
+        });
         return { ok: true, focused: true };
       }
+      await recordDiagnosticEvent({
+        flowId: target.flowId || "",
+        siteId: target.siteId || "",
+        displayName: target.displayName || "",
+        promptExcerpt: target.promptExcerpt || "",
+        eventType: "notification_focus_failed",
+        status: "failed",
+        message: focusResult.error || tabResult.error || "Unable to focus notification target",
+      });
       return {
         ok: false,
         focused: false,

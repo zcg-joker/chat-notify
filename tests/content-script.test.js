@@ -45,6 +45,7 @@ function createContentScriptContext({
   location = "https://chatgpt.com/c/test",
   extraApi = {},
   consoleApi = console,
+  now = () => 1780761600000,
 } = {}) {
   const source = fs.readFileSync(CONTENT_SCRIPT_PATH, "utf8");
   const documentFixture = createFakeDocument();
@@ -91,6 +92,18 @@ function createContentScriptContext({
       };
     },
     createResponseCompletedMessage: (event) => ({ type: "AI_RESPONSE_COMPLETED", payload: event }),
+    createDiagnosticEventMessage: (event) => ({
+      type: "DIAGNOSTIC_EVENT",
+      payload: {
+        flowId: event.flowId || "",
+        siteId: event.siteId || "",
+        displayName: event.displayName || "",
+        promptExcerpt: event.promptExcerpt || "",
+        eventType: event.eventType || "",
+        status: event.status === "failed" ? "failed" : "ok",
+        message: typeof event.message === "string" ? event.message.split("\n")[0].trim() : "",
+      },
+    }),
   }, extraApi);
   const window = {
     location: new URL(location),
@@ -138,6 +151,9 @@ function createContentScriptContext({
     document: documentFixture.document,
     window,
     console: consoleApi,
+    Date: Object.assign(function DateShim(...args) {
+      return args.length ? new Date(...args) : new Date(now());
+    }, Date, { now }),
     globalThis: null,
   };
   context.globalThis = context;
@@ -285,16 +301,202 @@ test("sends completion messages through runtime messaging", () => {
     promptExcerpt: "Prompt",
   });
 
-  assert.deepEqual(context.sentMessages, [
+  assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [
     {
       type: "AI_RESPONSE_COMPLETED",
       payload: {
         siteId: "chatgpt",
         sessionKey: "conversation:a",
         promptExcerpt: "Prompt",
+        flowId: "",
       },
     },
   ]);
+});
+
+test("sends diagnostics for send and lifecycle events without session keys", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_STARTED",
+          lifecycleId: "life-1",
+          sessionKey: "conversation:a",
+          promptExcerpt: "Prompt",
+          url: "https://chatgpt.com/c/private",
+        },
+      },
+    },
+  });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_COMPLETED",
+          lifecycleId: "life-1",
+          sessionKey: "conversation:a",
+          promptExcerpt: "Prompt",
+          url: "https://chatgpt.com/c/private",
+        },
+      },
+    },
+  });
+
+  const diagnostics = context.sentMessages.filter((message) => message.type === "DIAGNOSTIC_EVENT");
+  assert.deepEqual(diagnostics.map((message) => message.payload), [
+    {
+      flowId: "chatgpt:1780761600000:1",
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      promptExcerpt: "",
+      eventType: "send_captured",
+      status: "ok",
+      message: "",
+    },
+    {
+      flowId: "chatgpt:1780761600000:1",
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      promptExcerpt: "Prompt",
+      eventType: "lifecycle_started",
+      status: "ok",
+      message: "",
+    },
+    {
+      flowId: "chatgpt:1780761600000:1",
+      siteId: "chatgpt",
+      displayName: "ChatGPT",
+      promptExcerpt: "Prompt",
+      eventType: "lifecycle_completed",
+      status: "ok",
+      message: "",
+    },
+  ]);
+  const serialized = JSON.stringify(diagnostics);
+  assert.equal(serialized.includes("conversation:a"), false);
+  assert.equal(serialized.includes("chatgpt.com/c/private"), false);
+});
+
+test("sends failed and canceled lifecycle diagnostics", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  for (const type of ["GENERATION_FAILED", "GENERATION_CANCELED"]) {
+    context.windowListeners.get("message")({
+      source: context.window,
+      data: {
+        source: "chat-notify-page-lifecycle-bridge",
+        detail: {
+          normalized: {
+            type,
+            lifecycleId: "life-1",
+            promptExcerpt: "Prompt",
+            errorMessage: "first line\nsecond line secret",
+          },
+        },
+      },
+    });
+  }
+
+  const diagnostics = context.sentMessages.filter((message) => message.type === "DIAGNOSTIC_EVENT");
+  assert.deepEqual(diagnostics.map((message) => message.payload.eventType), [
+    "send_captured",
+    "lifecycle_failed",
+    "lifecycle_canceled",
+  ]);
+  assert.equal(diagnostics[1].payload.status, "failed");
+  assert.equal(diagnostics[1].payload.message, "first line");
+  assert.equal(diagnostics[2].payload.status, "ok");
+});
+
+test("includes current flow id in completion messages", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.getControllerOptions().onCompleted({
+    siteId: "chatgpt",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Prompt",
+  });
+
+  assert.equal(context.sentMessages.at(-1).type, "AI_RESPONSE_COMPLETED");
+  assert.equal(context.sentMessages.at(-1).payload.flowId, "chatgpt:1780761600000:1");
+});
+
+test("keeps lifecycle diagnostics on their bound flow across overlapping sends", () => {
+  const context = createContentScriptContext();
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_STARTED",
+          lifecycleId: "life-a",
+          sessionKey: "conversation:a",
+          promptExcerpt: "Prompt A",
+        },
+      },
+    },
+  });
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_STARTED",
+          lifecycleId: "life-b",
+          sessionKey: "conversation:b",
+          promptExcerpt: "Prompt B",
+        },
+      },
+    },
+  });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_COMPLETED",
+          lifecycleId: "life-a",
+          sessionKey: "conversation:a",
+          promptExcerpt: "Prompt A",
+        },
+      },
+    },
+  });
+  context.getControllerOptions().onCompleted({
+    siteId: "chatgpt",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Prompt A",
+  });
+
+  const diagnostics = context.sentMessages.filter((message) => message.type === "DIAGNOSTIC_EVENT");
+  assert.deepEqual(diagnostics.map((message) => ({
+    eventType: message.payload.eventType,
+    flowId: message.payload.flowId,
+    promptExcerpt: message.payload.promptExcerpt,
+  })), [
+    { eventType: "send_captured", flowId: "chatgpt:1780761600000:1", promptExcerpt: "" },
+    { eventType: "lifecycle_started", flowId: "chatgpt:1780761600000:1", promptExcerpt: "Prompt A" },
+    { eventType: "send_captured", flowId: "chatgpt:1780761600000:2", promptExcerpt: "" },
+    { eventType: "lifecycle_started", flowId: "chatgpt:1780761600000:2", promptExcerpt: "Prompt B" },
+    { eventType: "lifecycle_completed", flowId: "chatgpt:1780761600000:1", promptExcerpt: "Prompt A" },
+  ]);
+  assert.equal(context.sentMessages.at(-1).type, "AI_RESPONSE_COMPLETED");
+  assert.equal(context.sentMessages.at(-1).payload.flowId, "chatgpt:1780761600000:1");
 });
 
 test("logs runtime response after sending completion message", () => {

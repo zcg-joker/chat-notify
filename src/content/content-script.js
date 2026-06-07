@@ -37,6 +37,76 @@
 
   let enabled = false;
   let observersInstalled = false;
+  let flowCounter = 0;
+  let currentPendingFlowId = "";
+  const flowIdByLifecycleId = new Map();
+  const flowIdBySessionKey = new Map();
+
+  const diagnosticTypeByLifecycleType = {
+    GENERATION_STARTED: "lifecycle_started",
+    GENERATION_COMPLETED: "lifecycle_completed",
+    GENERATION_FAILED: "lifecycle_failed",
+    GENERATION_CANCELED: "lifecycle_canceled",
+  };
+
+  function createFlowId() {
+    flowCounter += 1;
+    return `${adapter.siteId}:${Date.now()}:${flowCounter}`;
+  }
+
+  function sendDiagnosticEvent(input) {
+    if (typeof api.createDiagnosticEventMessage !== "function") {
+      return;
+    }
+    chrome.runtime.sendMessage(api.createDiagnosticEventMessage(Object.assign({
+      flowId: currentPendingFlowId,
+      siteId: adapter.siteId,
+      displayName: adapter.displayName,
+    }, input || {})), () => {
+      const lastError = chrome.runtime && chrome.runtime.lastError;
+      if (lastError) {
+        log("debug", "diagnostic message failed", lastError.message || String(lastError));
+      }
+    });
+  }
+
+  function bindSessionFlow(sessionKey, flowId) {
+    if (typeof sessionKey === "string" && sessionKey && typeof flowId === "string" && flowId) {
+      flowIdBySessionKey.set(sessionKey, flowId);
+    }
+  }
+
+  function resolveLifecycleFlowId(normalized) {
+    const lifecycleId = normalized && normalized.lifecycleId;
+    if (
+      typeof lifecycleId === "string" &&
+      lifecycleId &&
+      flowIdByLifecycleId.has(lifecycleId)
+    ) {
+      return flowIdByLifecycleId.get(lifecycleId);
+    }
+
+    const sessionKey = normalized && normalized.sessionKey;
+    if (
+      typeof sessionKey === "string" &&
+      sessionKey &&
+      flowIdBySessionKey.has(sessionKey)
+    ) {
+      return flowIdBySessionKey.get(sessionKey);
+    }
+
+    return currentPendingFlowId;
+  }
+
+  function bindLifecycleFlow(normalized, flowId) {
+    if (!normalized || typeof flowId !== "string" || !flowId) {
+      return;
+    }
+    if (typeof normalized.lifecycleId === "string" && normalized.lifecycleId) {
+      flowIdByLifecycleId.set(normalized.lifecycleId, flowId);
+    }
+    bindSessionFlow(normalized.sessionKey, flowId);
+  }
 
   function postDebugStateToBridge() {
     window.postMessage(
@@ -74,14 +144,22 @@
       sessionKey: event.sessionKey,
       promptExcerpt: event.promptExcerpt,
     });
-    chrome.runtime.sendMessage(api.createResponseCompletedMessage(event), (response) => {
-      const lastError = chrome.runtime && chrome.runtime.lastError;
-      if (lastError) {
-        log("warn", "completion message failed", lastError.message || String(lastError));
-        return;
+    chrome.runtime.sendMessage(
+      api.createResponseCompletedMessage(Object.assign({}, event, {
+        flowId:
+          event.flowId ||
+          (typeof event.sessionKey === "string" && flowIdBySessionKey.get(event.sessionKey)) ||
+          currentPendingFlowId,
+      })),
+      (response) => {
+        const lastError = chrome.runtime && chrome.runtime.lastError;
+        if (lastError) {
+          log("warn", "completion message failed", lastError.message || String(lastError));
+          return;
+        }
+        log("info", "completion message acknowledged", response);
       }
-      log("info", "completion message acknowledged", response);
-    });
+    );
   }
 
   function installLifecycleBridge() {
@@ -128,6 +206,8 @@
           ? adapter.getSessionKey(window.location, document)
           : "",
     });
+    currentPendingFlowId = createFlowId();
+    sendDiagnosticEvent({ eventType: "send_captured", flowId: currentPendingFlowId });
     controller.handleUserSend();
   }
 
@@ -147,11 +227,27 @@
 
     const normalized = adapter.normalizeLifecycleEvent(data.detail);
     if (normalized) {
+      const diagnosticEventType = diagnosticTypeByLifecycleType[normalized.type];
+      const flowId = resolveLifecycleFlowId(normalized);
       log("info", "lifecycle event received", {
         type: normalized.type,
         lifecycleId: normalized.lifecycleId,
         url: normalized.url,
       });
+      if (normalized.type === "GENERATION_STARTED") {
+        bindLifecycleFlow(normalized, flowId);
+      } else {
+        bindSessionFlow(normalized.sessionKey, flowId);
+      }
+      if (diagnosticEventType) {
+        sendDiagnosticEvent({
+          flowId,
+          eventType: diagnosticEventType,
+          status: normalized.type === "GENERATION_FAILED" ? "failed" : "ok",
+          message: normalized.errorMessage || normalized.message || "",
+          promptExcerpt: normalized.promptExcerpt || "",
+        });
+      }
       controller.handleLifecycleEvent(normalized);
       return;
     }

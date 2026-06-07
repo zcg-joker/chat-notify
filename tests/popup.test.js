@@ -302,7 +302,7 @@ test("popup renders request probe diagnostics", () => {
   assert.equal(popup.elements["activity-summary"].textContent, "Request matched");
   assert.equal(
     popup.elements["activity-timeline"].textContent,
-    "Request ignored (xhr POST gemini.google.com/_/BardChatUi/data/other) -> Request matched (xhr POST gemini.google.com/_/BardChatUi/data/batchexecute)",
+    "Request matched (xhr POST gemini.google.com/_/BardChatUi/data/batchexecute)",
   );
 });
 
@@ -340,6 +340,95 @@ test("popup summary ignores trailing ignored request probes", () => {
   });
 
   assert.equal(popup.elements["activity-summary"].textContent, "Notification sent");
+});
+
+test("popup timeline hides ignored request probes when meaningful events exist", () => {
+  const popup = runPopup({
+    tabUrl: "https://chatgpt.com/c/test",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "sent", siteId: "chatgpt", updatedAt: 1780761600000 },
+        diagnostics: {
+          latestFlow: {
+            siteId: "chatgpt",
+            displayName: "ChatGPT",
+            events: [
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/ces/v1/t",
+                },
+              },
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/backend-api/f/conversation/prepare",
+                },
+              },
+              { eventType: "lifecycle_completed" },
+              { eventType: "notification_sent" },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Notification sent");
+  assert.equal(popup.elements["activity-timeline"].textContent, "Generation completed -> Notification sent");
+});
+
+test("popup timeline keeps ignored request probes when no meaningful events exist", () => {
+  const popup = runPopup({
+    tabUrl: "https://chatgpt.com/c/test",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: {
+            siteId: "chatgpt",
+            displayName: "ChatGPT",
+            events: [
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/ces/v1/t",
+                },
+              },
+              {
+                eventType: "request_probe_ignored",
+                request: {
+                  requestKind: "fetch",
+                  method: "POST",
+                  host: "chatgpt.com",
+                  path: "/backend-api/f/conversation/prepare",
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Request ignored");
+  assert.equal(
+    popup.elements["activity-timeline"].textContent,
+    "Request ignored (fetch POST chatgpt.com/ces/v1/t) -> Request ignored (fetch POST chatgpt.com/backend-api/f/conversation/prepare)",
+  );
 });
 
 test("popup renders unknown diagnostics event types with a neutral label", () => {

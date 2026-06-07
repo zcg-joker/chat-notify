@@ -84,7 +84,10 @@
   function renderDiagnostics(diagnostics) {
     const flow = diagnostics && diagnostics.latestFlow;
     const events = flow && Array.isArray(flow.events) ? flow.events : [];
-    const labels = events.map(activityLabel).filter(Boolean);
+    const visibleEvents = events.some((event) => event && event.eventType !== "request_probe_ignored")
+      ? events.filter((event) => event && event.eventType !== "request_probe_ignored")
+      : events;
+    const labels = visibleEvents.map(activityLabel).filter(Boolean);
 
     if (labels.length === 0) {
       activitySummary.textContent = "No recent activity";
@@ -95,8 +98,8 @@
     }
 
     const summaryEvent =
-      Array.from(events).reverse().find((event) => event && event.eventType !== "request_probe_ignored") ||
-      events[events.length - 1];
+      Array.from(visibleEvents).reverse().find((event) => event && event.eventType !== "request_probe_ignored") ||
+      visibleEvents[visibleEvents.length - 1];
     activitySummary.textContent = activityLabel(summaryEvent).replace(/\s+\(.+\)$/, "");
     activitySite.textContent = flow.displayName || flow.siteId || "";
     activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";

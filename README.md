@@ -1,11 +1,8 @@
 # Chat Notify
 
-Chat Notify is a privacy-conscious browser extension that notifies you when ChatGPT finishes responding.
+Chat Notify is a privacy-conscious browser extension that sends a browser/system notification when ChatGPT finishes responding.
 
-The MVP supports ChatGPT on:
-
-- `https://chatgpt.com/*`
-- `https://chat.openai.com/*`
+> Alpha status: this project is ready for early GitHub testing, but it is not yet published on the Chrome Web Store or Edge Add-ons.
 
 ## What It Does
 
@@ -14,46 +11,65 @@ The MVP supports ChatGPT on:
 - Supports multiple tabs and same-tab conversation switching when the response lifecycle remains observable.
 - Sends a browser/system notification when an observable response completes.
 - Shows a short excerpt of your prompt in the notification.
+- Keeps debug logs off by default.
 
-## Privacy
+The Alpha supports ChatGPT only:
 
-Chat Notify does not upload, sync, or persist chat content.
+- `https://chatgpt.com/*`
+- `https://chat.openai.com/*`
 
-Prompt excerpts are kept only in local extension memory for the pending response. They are cleared after completion, cancellation, timeout, or abandonment. The extension does not make network requests to project-owned or third-party servers.
+## Install
 
-## Install For Local Development
+Recommended for early users: download the latest GitHub Release zip and follow the [Install guide](docs/INSTALL.md).
 
-1. Open Chrome or Edge Chromium.
-2. Open `chrome://extensions`.
-3. Enable Developer mode.
-4. Click "Load unpacked".
-5. Select this repository directory.
-6. Open ChatGPT and send a message.
+Developers can also clone this repository and load the project directory as an unpacked extension.
 
-## Test
+## Developer Setup
 
 ```bash
 npm test
 ```
 
-## Manual Validation
+To load from source:
 
-- Load the unpacked extension in Chrome.
-- Keep popup debug logs off for normal use; enable "Debug logs" only when checking `[Chat Notify]` diagnostics in the page or service worker console.
-- Send a short ChatGPT prompt and confirm one notification after completion.
-- Open two ChatGPT tabs, send prompts in both, and confirm two independent notifications.
-- In one ChatGPT tab, send a prompt in Conversation A, switch to Conversation B, send another prompt, and confirm both observable completions notify independently.
-- In one ChatGPT tab, send a prompt in Conversation A, switch to Conversation B, and confirm no completion notification appears for A if ChatGPT canceled A's generation.
-- Open an existing historical conversation and confirm no notification appears.
-- Refresh a ChatGPT page and confirm no notification appears.
-- Switch away from the ChatGPT tab during generation and confirm notification still appears.
-- Disable the extension in the popup and confirm no notification appears.
-- Use the popup test notification button and confirm it works.
+1. Open Chrome or Edge Chromium.
+2. Open `chrome://extensions` or `edge://extensions`.
+3. Enable Developer mode.
+4. Click "Load unpacked".
+5. Select this repository directory.
+6. Open ChatGPT and send a message.
+
+## Package A Release Zip
+
+```bash
+npm run package
+```
+
+The package script creates a clean extension zip under `dist/` for GitHub Releases. Maintainers should follow the [Release guide](docs/RELEASE.md).
+
+## Privacy
+
+Chat Notify does not upload, sync, or persist chat content. It does not use analytics, external servers, or cloud sync.
+
+Prompt excerpts are kept only in local extension memory for the active response and are cleared after notification, cancellation, timeout, or abandonment.
+
+Debug logs are disabled by default. When enabled, logs may include prompt excerpts for diagnostics, so avoid posting sensitive logs publicly.
+
+## Troubleshooting
+
+If notifications do not appear, first use the popup "Test notification" button. For detailed steps, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
 ## Current Limits
 
 - ChatGPT only.
 - Chrome and Edge Chromium only.
+- Alpha release zip must be installed manually.
+- No Chrome Web Store or Edge Add-ons listing yet.
 - No sound notifications.
 - No webhook integrations.
 - No cloud sync.
+- No click-to-focus notification behavior yet.
+
+## Open Source
+
+Chat Notify is released under the MIT License. Issues and early feedback are welcome once the repository is published on GitHub.

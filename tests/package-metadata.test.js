@@ -35,3 +35,52 @@ test("repository includes MIT license text", () => {
   assert.match(license, /Permission is hereby granted, free of charge/);
   assert.match(license, /THE SOFTWARE IS PROVIDED "AS IS"/);
 });
+
+test("README presents alpha release information and links to docs", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+
+  assert.match(readme, /^# Chat Notify/m);
+  assert.match(readme, /Alpha/i);
+  assert.match(readme, /GitHub Releases/i);
+  assert.match(readme, /ChatGPT only/i);
+  assert.match(readme, /privacy-conscious/i);
+  assert.match(readme, /\[Install guide\]\(docs\/INSTALL\.md\)/);
+  assert.match(readme, /\[Troubleshooting\]\(docs\/TROUBLESHOOTING\.md\)/);
+  assert.match(readme, /\[Release guide\]\(docs\/RELEASE\.md\)/);
+});
+
+test("install guide covers release zip and browser loading steps", () => {
+  const installGuide = fs.readFileSync(path.join(ROOT, "docs/INSTALL.md"), "utf8");
+
+  assert.match(installGuide, /^# Install Chat Notify/m);
+  assert.match(installGuide, /GitHub Release zip/i);
+  assert.match(installGuide, /chrome:\/\/extensions/);
+  assert.match(installGuide, /edge:\/\/extensions/);
+  assert.match(installGuide, /Load unpacked/i);
+  assert.match(installGuide, /Test notification/i);
+  assert.match(installGuide, /Update/i);
+});
+
+test("troubleshooting guide covers notification and debug diagnostics", () => {
+  const troubleshooting = fs.readFileSync(path.join(ROOT, "docs/TROUBLESHOOTING.md"), "utf8");
+
+  assert.match(troubleshooting, /^# Troubleshooting/m);
+  assert.match(troubleshooting, /Test notification does not appear/i);
+  assert.match(troubleshooting, /ChatGPT response completion notification does not appear/i);
+  assert.match(troubleshooting, /Prompt excerpt looks wrong/i);
+  assert.match(troubleshooting, /Debug logs/i);
+  assert.match(troubleshooting, /service worker/i);
+  assert.match(troubleshooting, /Do not paste full chat content/i);
+});
+
+test("release guide covers maintainer package and GitHub release flow", () => {
+  const releaseGuide = fs.readFileSync(path.join(ROOT, "docs/RELEASE.md"), "utf8");
+
+  assert.match(releaseGuide, /^# Release Guide/m);
+  assert.match(releaseGuide, /0\.1\.0-alpha\.1/);
+  assert.match(releaseGuide, /npm test/);
+  assert.match(releaseGuide, /npm run package/);
+  assert.match(releaseGuide, /Inspect the zip/i);
+  assert.match(releaseGuide, /GitHub Release/i);
+  assert.match(releaseGuide, /chat-notify-0\.1\.0-alpha\.1\.zip/);
+});

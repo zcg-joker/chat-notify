@@ -9,7 +9,7 @@ The goal is to adapt from evidence. First capture a small sanitized probe report
 1. Load Chat Notify as an unpacked extension.
 2. Open a supported page, or open the unsupported page you want to investigate.
 3. If the popup says the page is unsupported, click "Start page probe".
-4. Open the popup and turn on "Debug logs" only if console details are needed.
+4. Open the popup and turn on "Debug logs" only if console details are needed. Start page probe does not require Debug logs to collect sanitized same-host request candidates.
 5. Send one short non-sensitive prompt.
 6. Wait until the AI response completes or the bug reproduces.
 7. Open the popup and click "Copy diagnostics".
@@ -33,6 +33,8 @@ The copied report is intentionally small and adapter-focused.
 - `latestFlow.summary.ignoredRequestCount`: number of observed requests ignored by the adapter.
 - `latestFlow.summary.lifecycleEventTypes`: lifecycle stages observed by the bridge.
 - `latestFlow.summary.notificationEventTypes`: notification stages observed by the background worker.
+- `latestFlow.summary.requestCandidateCount`: number of retained sanitized request candidates.
+- `latestFlow.requestCandidates`: bounded, de-duplicated same-host request candidates retained for adapter design.
 - `latestFlow.matchedRequests`: sanitized request metadata for matched generation candidates.
 - `latestFlow.ignoredRequests`: sanitized request metadata for ignored request candidates.
 - `latestFlow.events`: compact event timeline with sanitized request metadata only.
@@ -89,6 +91,8 @@ Use the popup "Start page probe" action while the target tab is active.
 The page probe uses Chrome's `activeTab` and `scripting` permissions to inject the existing probe scripts only into the currently active tab. It does not add broad persistent host permissions. The requested probe host must match the active tab host, and the copied report stores only `currentPage.host`, not the full URL.
 
 The unsupported-site adapter is probe-only. It records sanitized same-host fetch/XHR request probes, but it does not normalize lifecycle events, does not start response monitoring, and does not send completion notifications. Its job is to reveal candidate request paths and methods for a future real adapter.
+
+The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
 
 Keep host permissions narrow. Do not broaden the manifest to all websites just to make adapter discovery easier.
 

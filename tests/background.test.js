@@ -200,6 +200,7 @@ test("records diagnostic events in popup status without raw session metadata", a
     displayName: "ChatGPT",
     promptExcerpt: "secret prompt",
     updatedAt: 1780761600000,
+    requestCandidates: [],
     events: [
       {
         eventType: "send_captured",
@@ -285,6 +286,106 @@ test("diagnostic events are bounded to the latest eight events", async () => {
     local.data.popupStatus.diagnostics.latestFlow.events.map((event) => event.eventType),
     ["event_3", "event_4", "event_5", "event_6", "event_7", "event_8", "event_9", "event_10"]
   );
+});
+
+test("request probe candidates stay available beyond the recent event timeline", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  for (let index = 1; index <= 12; index += 1) {
+    await service.handleMessage(createDiagnosticEventMessage({
+      flowId: "probe:example.com:1780761600000",
+      siteId: "page-probe",
+      displayName: "Page Probe",
+      eventType: "request_probe_matched",
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: `/api/candidate-${index}?token=secret`,
+      matched: true,
+      reason: "probe_observed_request",
+      body: "private body",
+      headers: { authorization: "Bearer token" },
+    }));
+  }
+
+  const flow = local.data.popupStatus.diagnostics.latestFlow;
+  assert.equal(flow.events.length, 8);
+  assert.deepEqual(flow.requestCandidates.map((request) => request.path), [
+    "/api/candidate-1",
+    "/api/candidate-2",
+    "/api/candidate-3",
+    "/api/candidate-4",
+    "/api/candidate-5",
+    "/api/candidate-6",
+    "/api/candidate-7",
+    "/api/candidate-8",
+    "/api/candidate-9",
+    "/api/candidate-10",
+    "/api/candidate-11",
+    "/api/candidate-12",
+  ]);
+  const serialized = JSON.stringify(flow);
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("private body"), false);
+  assert.equal(serialized.includes("Bearer token"), false);
+});
+
+test("request probe candidates are bounded and de-duplicated by request metadata", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: { storage: { local } },
+    now: () => 1780761600000,
+  });
+
+  for (let index = 1; index <= 30; index += 1) {
+    await service.handleMessage(createDiagnosticEventMessage({
+      flowId: "probe:example.com:1780761600000",
+      siteId: "page-probe",
+      displayName: "Page Probe",
+      eventType: "request_probe_matched",
+      requestKind: index % 2 === 0 ? "xhr" : "fetch",
+      method: "POST",
+      host: "example.com",
+      path: `/api/candidate-${index}`,
+      matched: true,
+      reason: "probe_observed_request",
+    }));
+  }
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:1780761600000",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_matched",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/candidate-30",
+    matched: true,
+    reason: "probe_observed_request",
+  }));
+
+  const candidates = local.data.popupStatus.diagnostics.latestFlow.requestCandidates;
+  assert.equal(candidates.length, 20);
+  assert.deepEqual(candidates.at(0), {
+    requestKind: "xhr",
+    method: "POST",
+    host: "example.com",
+    path: "/api/candidate-12",
+    matched: true,
+    reason: "probe_observed_request",
+  });
+  assert.deepEqual(candidates.at(-1), {
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/candidate-30",
+    matched: true,
+    reason: "probe_observed_request",
+  });
 });
 
 test("concurrent diagnostic events on one flow preserve both events", async () => {
@@ -1437,6 +1538,7 @@ test("records page probe start diagnostics", async () => {
     displayName: "Page Probe",
     promptExcerpt: "",
     updatedAt: 1780761600000,
+    requestCandidates: [],
     events: [
       {
         eventType: "probe_started",

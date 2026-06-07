@@ -360,6 +360,29 @@ test("page probe observes same-host fetches as request probes without lifecycle 
   assert.equal(serialized.includes("Bearer secret"), false);
 });
 
+test("page probe observes same-host fetches even when debug logs are disabled", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://example.com/chat",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  installPageProbeBridgeConfig(bridge);
+
+  await bridge.window.fetch("https://example.com/api/chat", { method: "POST" });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(bridge.details())), [
+    {
+      eventType: "request_probe",
+      siteId: "page-probe",
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: "/api/chat",
+      matched: true,
+      reason: "probe_observed_request",
+    },
+  ]);
+});
+
 test("page probe ignores cross-host fetches", async () => {
   const bridge = createBridgeWindow({
     location: "https://example.com/chat",

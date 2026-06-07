@@ -85,6 +85,9 @@
     const flow = diagnostics.latestFlow || null;
     const events = flow && Array.isArray(flow.events) ? flow.events.map(cloneEventForReport) : [];
     const requestEvents = events.filter((event) => event.request);
+    const requestCandidates = Array.isArray(flow && flow.requestCandidates)
+      ? flow.requestCandidates.map(sanitizeRequestProbe).filter(Boolean)
+      : [];
     const matchedRequests = requestEvents
       .filter((event) => event.request.matched)
       .map((event) => event.request);
@@ -129,9 +132,11 @@
           requestProbeCount: requestEvents.length,
           matchedRequestCount: matchedRequests.length,
           ignoredRequestCount: ignoredRequests.length,
+          requestCandidateCount: requestCandidates.length,
           lifecycleEventTypes,
           notificationEventTypes,
         },
+        requestCandidates,
         matchedRequests,
         ignoredRequests,
         events,

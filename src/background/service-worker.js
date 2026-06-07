@@ -42,6 +42,7 @@
     diagnostics: Object.freeze({ latestFlow: null }),
   });
   const MAX_DIAGNOSTIC_EVENTS = 8;
+  const MAX_REQUEST_CANDIDATES = 20;
 
   function log(level, message, detail) {
     if (typeof console === "undefined" || typeof console[level] !== "function") {
@@ -90,6 +91,47 @@
     return `${characters.slice(0, safeLimit).join("")}...`;
   }
 
+  function sanitizeDiagnosticRequest(request) {
+    if (!request || typeof request !== "object") {
+      return null;
+    }
+    const result = {
+      requestKind: request.requestKind || "",
+      method: request.method || "",
+      host: request.host || "",
+      path: request.path || "",
+      matched: Boolean(request.matched),
+      reason: request.reason || "",
+    };
+    if (!result.requestKind && !result.method && !result.host && !result.path && !result.reason) {
+      return null;
+    }
+    return result;
+  }
+
+  function requestCandidateKey(request) {
+    return [
+      request.requestKind,
+      request.method,
+      request.host,
+      request.path,
+      request.matched ? "matched" : "ignored",
+      request.reason,
+    ].join("\u0000");
+  }
+
+  function appendRequestCandidate(existingCandidates, request) {
+    const sanitized = sanitizeDiagnosticRequest(request);
+    if (!sanitized || !sanitized.matched) {
+      return Array.isArray(existingCandidates) ? existingCandidates.slice(-MAX_REQUEST_CANDIDATES) : [];
+    }
+    const candidates = Array.isArray(existingCandidates) ? existingCandidates.slice() : [];
+    const key = requestCandidateKey(sanitized);
+    const withoutDuplicate = candidates.filter((candidate) => requestCandidateKey(candidate) !== key);
+    withoutDuplicate.push(sanitized);
+    return withoutDuplicate.slice(-MAX_REQUEST_CANDIDATES);
+  }
+
   function createNotificationService(options = {}) {
     const chromeApi = options.chromeApi || globalThis.chrome;
     const now = typeof options.now === "function" ? options.now : () => Date.now();
@@ -136,18 +178,18 @@
                         message: event.message || "",
                         updatedAt: isFiniteNumber(event.updatedAt) ? event.updatedAt : null,
                       };
-                      if (event.request && typeof event.request === "object") {
-                        clonedEvent.request = {
-                          requestKind: event.request.requestKind || "",
-                          method: event.request.method || "",
-                          host: event.request.host || "",
-                          path: event.request.path || "",
-                          matched: Boolean(event.request.matched),
-                          reason: event.request.reason || "",
-                        };
+                      const request = sanitizeDiagnosticRequest(event.request);
+                      if (request) {
+                        clonedEvent.request = request;
                       }
                       return clonedEvent;
                     })
+                  : [],
+                requestCandidates: Array.isArray(source.diagnostics.latestFlow.requestCandidates)
+                  ? source.diagnostics.latestFlow.requestCandidates
+                      .map(sanitizeDiagnosticRequest)
+                      .filter(Boolean)
+                      .slice(-MAX_REQUEST_CANDIDATES)
                   : [],
               }
             : null,
@@ -371,18 +413,14 @@
           message: payload.message || "",
           updatedAt: now(),
         };
-        if (payload.request && typeof payload.request === "object") {
-          event.request = {
-            requestKind: payload.request.requestKind || "",
-            method: payload.request.method || "",
-            host: payload.request.host || "",
-            path: payload.request.path || "",
-            matched: Boolean(payload.request.matched),
-            reason: payload.request.reason || "",
-          };
+        const request = sanitizeDiagnosticRequest(payload.request);
+        if (request) {
+          event.request = request;
         }
         const sameFlow = currentFlow && currentFlow.flowId === (payload.flowId || "");
         const previousEvents = sameFlow && Array.isArray(currentFlow.events) ? currentFlow.events : [];
+        const previousRequestCandidates =
+          sameFlow && Array.isArray(currentFlow.requestCandidates) ? currentFlow.requestCandidates : [];
         const latestFlow = {
           flowId: payload.flowId || "",
           siteId: payload.siteId || "",
@@ -390,6 +428,7 @@
           promptExcerpt: sanitizePromptExcerpt(payload.promptExcerpt),
           updatedAt: event.updatedAt,
           events: previousEvents.concat(event).slice(-MAX_DIAGNOSTIC_EVENTS),
+          requestCandidates: appendRequestCandidate(previousRequestCandidates, request),
         };
         return {
           notificationHealth: current.notificationHealth,

@@ -180,7 +180,13 @@
   }
 
   function postRequestProbe(requestKind, input, init, inspected) {
-    if (!debugLogs || !bridgeConfig || !inspected || !bridgeConfig.hosts.includes(inspected.host)) {
+    if (!bridgeConfig || !inspected || !bridgeConfig.hosts.includes(inspected.host)) {
+      return;
+    }
+    if (!debugLogs && !bridgeConfig.probeOnly) {
+      return;
+    }
+    if (bridgeConfig.probeOnly && !inspected.matched) {
       return;
     }
     postLifecycleEvent({

@@ -159,6 +159,17 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
           displayName: "ChatGPT",
           promptExcerpt: "summarize this paper with private details",
           updatedAt: 1780761602000,
+          requestCandidates: [
+            {
+              requestKind: "xhr",
+              method: "POST",
+              host: "chatgpt.com",
+              path: "/backend-api/extra-candidate?token=secret",
+              matched: true,
+              reason: "probe_observed_request",
+              body: "must not leak",
+            },
+          ],
           events: [
             {
               eventType: "request_probe_ignored",
@@ -217,9 +228,20 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
         requestProbeCount: 2,
         matchedRequestCount: 1,
         ignoredRequestCount: 1,
+        requestCandidateCount: 1,
         lifecycleEventTypes: ["lifecycle_completed"],
         notificationEventTypes: ["notification_sent"],
       },
+      requestCandidates: [
+        {
+          requestKind: "xhr",
+          method: "POST",
+          host: "chatgpt.com",
+          path: "/backend-api/extra-candidate",
+          matched: true,
+          reason: "probe_observed_request",
+        },
+      ],
       matchedRequests: [
         {
           requestKind: "fetch",

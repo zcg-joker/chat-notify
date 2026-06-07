@@ -532,7 +532,9 @@
     const settings = input.settings || {};
     const probeComparison = createProbeComparison(diagnostics.probeSamples);
     const recommendation = createProbeRecommendation(probeComparison);
-    const adapterDraft = createStableAdapterDraft(currentPage, probeComparison);
+    const adapterDraft = recommendation.status === "ready_for_adapter_draft"
+      ? createStableAdapterDraft(currentPage, probeComparison)
+      : null;
     const report = {
       schemaVersion: 1,
       generatedAt: Number.isFinite(input.generatedAt) ? input.generatedAt : Date.now(),

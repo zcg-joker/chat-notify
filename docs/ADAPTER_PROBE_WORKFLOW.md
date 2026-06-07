@@ -34,7 +34,7 @@ The copied report is intentionally small and adapter-focused.
 - `recommendation.missingScenarios`: key probe scenarios still needed before drafting an adapter matcher.
 - `recommendation.primaryCandidate`: the strongest stable sanitized request candidate, when one exists.
 - `recommendation.nextActions`: concrete follow-up checks for the next probe or adapter-draft step.
-- `adapterDraft`: a first-pass adapter draft generated from `probeComparison.stableCandidates`, when stable retained samples exist.
+- `adapterDraft`: a first-pass adapter draft generated from `probeComparison.stableCandidates`, only when `recommendation.status` is `ready_for_adapter_draft`.
 - `latestFlow.siteId`: the adapter that handled the latest observed flow.
 - `latestFlow.promptExcerpt`: a short sanitized prompt excerpt.
 - `latestFlow.summary.totalEvents`: number of stored diagnostic events.
@@ -113,7 +113,7 @@ Use `recommendation` as the first triage result for retained probe samples. `ins
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 
-Use top-level `adapterDraft` as a cross-sample handoff sketch, not as generated production code. It suggests bridge matchers from the stable retained candidates and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
+Use top-level `adapterDraft` as a cross-sample handoff sketch, not as generated production code. It is generated only after `recommendation.status` reaches `ready_for_adapter_draft`; if the report says `collect_more_samples`, collect the missing scenarios before treating any stable candidate as an adapter draft. The draft suggests bridge matchers from the stable retained candidates and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
 
 Use `latestFlow.adapterDraft` only as a single-flow sketch when stable cross-sample evidence is not available yet.
 

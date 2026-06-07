@@ -842,6 +842,7 @@ test("createProbeReport recommends collecting missing key scenarios", () => {
       "Confirm the stable candidate appears in the missing scenarios.",
     ],
   });
+  assert.equal(report.adapterDraft, null);
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

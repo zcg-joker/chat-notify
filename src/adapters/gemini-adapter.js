@@ -186,6 +186,7 @@
       siteId: "gemini",
       displayName: "Gemini",
       canObserveLifecycle: true,
+      completionStrategy: "lifecycle_complete",
       matchesLocation,
       getSessionKey,
       isSendEvent,

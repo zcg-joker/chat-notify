@@ -50,6 +50,12 @@ test("satisfies adapter contract", () => {
   assert.equal(validateAdapter(createGeminiAdapter()), true);
 });
 
+test("uses immediate lifecycle completion strategy", () => {
+  const adapter = createGeminiAdapter();
+
+  assert.equal(adapter.completionStrategy, "lifecycle_complete");
+});
+
 test("extracts stable session key from Gemini app URL when present", () => {
   const adapter = createGeminiAdapter({ tempKeySeed: () => "seed" });
 

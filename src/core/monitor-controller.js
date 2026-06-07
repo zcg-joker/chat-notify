@@ -25,6 +25,10 @@
     deps.RESPONSE_STATES.CANCELED,
     deps.RESPONSE_STATES.ERROR_OR_UNKNOWN,
   ]);
+  const COMPLETION_STRATEGY = Object.freeze({
+    UI_SETTLED: "ui_settled",
+    LIFECYCLE_COMPLETE: "lifecycle_complete",
+  });
 
   function createMonitorController(options = {}) {
     const adapter = options.adapter;
@@ -185,6 +189,30 @@
       removeSession(sessionKey);
     }
 
+    function completeSession(sessionKey) {
+      const record = tracker.get(sessionKey);
+      if (!record) {
+        return;
+      }
+
+      onCompleted({
+        siteId: record.siteId,
+        displayName: adapter.displayName,
+        sessionKey: record.sessionKey,
+        sourceTabId: record.sourceTabId,
+        promptExcerpt: record.promptExcerpt,
+        completedAt: now(),
+      });
+      removeSession(sessionKey);
+    }
+
+    function shouldCompleteOnLifecycle(lifecycleEvent) {
+      return (
+        adapter.completionStrategy === COMPLETION_STRATEGY.LIFECYCLE_COMPLETE &&
+        lifecycleEvent.type === "GENERATION_COMPLETED"
+      );
+    }
+
     function handleLifecycleEvent(lifecycleEvent) {
       if (!lifecycleEvent || !lifecycleEvent.type) {
         return;
@@ -203,6 +231,10 @@
       }
 
       updateTrackerFromResult(sessionKey, lifecycleEvent, result);
+      if (shouldCompleteOnLifecycle(lifecycleEvent)) {
+        completeSession(sessionKey);
+        return;
+      }
       completeIfNeeded(sessionKey, result);
     }
 

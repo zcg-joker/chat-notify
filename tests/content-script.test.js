@@ -60,6 +60,7 @@ function createContentScriptContext({
     handleLifecycleEvent: [],
     tick: 0,
   };
+  const completionEventsByLifecycleType = new Map();
   let controllerOptions = null;
   const adapter = {
     siteId: "chatgpt",
@@ -85,6 +86,10 @@ function createContentScriptContext({
         },
         handleLifecycleEvent(event) {
           controllerCalls.handleLifecycleEvent.push(event);
+          const completionEvent = completionEventsByLifecycleType.get(event.type);
+          if (completionEvent) {
+            controllerOptions.onCompleted(completionEvent);
+          }
         },
         tick() {
           controllerCalls.tick += 1;
@@ -164,6 +169,7 @@ function createContentScriptContext({
     adapter: controllerOptions && controllerOptions.adapter,
     getControllerOptions: () => controllerOptions,
     controllerCalls,
+    completionEventsByLifecycleType,
     documentFixture,
     intervals,
     postedMessages,
@@ -382,6 +388,36 @@ test("sends diagnostics for send and lifecycle events without session keys", () 
   const serialized = JSON.stringify(diagnostics);
   assert.equal(serialized.includes("conversation:a"), false);
   assert.equal(serialized.includes("chatgpt.com/c/private"), false);
+});
+
+test("can notify from a lifecycle message without waiting for interval tick", () => {
+  const context = createContentScriptContext();
+  context.completionEventsByLifecycleType.set("GENERATION_COMPLETED", {
+    siteId: "gemini",
+    displayName: "Gemini",
+    sessionKey: "conversation:a",
+    promptExcerpt: "Explain Kubernetes simply",
+  });
+
+  context.documentFixture.listeners.get("click").listener({ isSend: true });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        normalized: {
+          type: "GENERATION_COMPLETED",
+          lifecycleId: "life-1",
+          sessionKey: "conversation:a",
+          promptExcerpt: "Explain Kubernetes simply",
+        },
+      },
+    },
+  });
+
+  assert.equal(context.controllerCalls.tick, 0);
+  assert.equal(context.sentMessages.at(-1).type, "AI_RESPONSE_COMPLETED");
+  assert.equal(context.sentMessages.at(-1).payload.promptExcerpt, "Explain Kubernetes simply");
 });
 
 test("sends failed and canceled lifecycle diagnostics", () => {

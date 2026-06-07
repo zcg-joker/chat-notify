@@ -81,6 +81,73 @@ test("waits for responding indicator to clear after generation stream completes"
   assert.equal(completed[0].promptExcerpt, "Think through this problem");
 });
 
+test("immediately completes when adapter trusts lifecycle completion", () => {
+  let currentTime = 1000;
+  const completed = [];
+  const adapter = {
+    siteId: "gemini",
+    displayName: "Gemini",
+    completionStrategy: "lifecycle_complete",
+    getSessionKey: () => "conversation:a",
+    getPromptDraft: () => "Explain Kubernetes simply",
+    getLatestUserMessage: () => "",
+    getLatestAssistantSnapshot: () => "",
+    isResponding: () => true,
+  };
+  const controller = createMonitorController({
+    adapter,
+    root: {},
+    sourceTabId: 7,
+    now: () => currentTime,
+    onCompleted: (event) => completed.push(event),
+    settleMs: 10,
+  });
+
+  controller.handleUserSend();
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  controller.handleLifecycleEvent({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+
+  assert.deepEqual(completed, [
+    {
+      siteId: "gemini",
+      displayName: "Gemini",
+      sessionKey: "conversation:a",
+      sourceTabId: 7,
+      promptExcerpt: "Explain Kubernetes simply",
+      completedAt: 1000,
+    },
+  ]);
+});
+
+test("default completion strategy still waits for settle tick", () => {
+  let currentTime = 1000;
+  const completed = [];
+  const adapterState = {
+    sessionKey: "conversation:a",
+    promptDraft: "Think through this problem",
+    responding: false,
+  };
+  const controller = createMonitorController({
+    adapter: createFakeAdapter(adapterState),
+    root: {},
+    sourceTabId: 7,
+    now: () => currentTime,
+    onCompleted: (event) => completed.push(event),
+    settleMs: 10,
+  });
+
+  controller.handleUserSend();
+  controller.handleLifecycleEvent({ type: "GENERATION_STARTED", lifecycleId: "life-1" });
+  controller.handleLifecycleEvent({ type: "GENERATION_COMPLETED", lifecycleId: "life-1" });
+
+  assert.equal(completed.length, 0);
+
+  currentTime = 1011;
+  controller.tick();
+
+  assert.equal(completed.length, 1);
+});
+
 test("canceled lifecycle does not emit completion and clears pending session", () => {
   const completed = [];
   const adapter = {

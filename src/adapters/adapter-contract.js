@@ -23,6 +23,10 @@
     displayName: "string",
     canObserveLifecycle: "boolean",
   });
+  const COMPLETION_STRATEGIES = Object.freeze({
+    UI_SETTLED: "ui_settled",
+    LIFECYCLE_COMPLETE: "lifecycle_complete",
+  });
 
   function validateAdapter(adapter) {
     if (!adapter || typeof adapter !== "object") {
@@ -38,6 +42,7 @@
   }
 
   return {
+    COMPLETION_STRATEGIES,
     REQUIRED_ADAPTER_METHODS,
     REQUIRED_ADAPTER_METADATA,
     validateAdapter,

@@ -45,6 +45,8 @@ test("README presents alpha release information and links to docs", () => {
   assert.match(readme, /GitHub Releases/i);
   assert.match(readme, /ChatGPT only/i);
   assert.match(readme, /privacy-conscious/i);
+  assert.match(readme, /Click a completion notification/i);
+  assert.match(readme, /popup status/i);
   assert.match(readme, /\[Install guide\]\(docs\/INSTALL\.md\)/);
   assert.match(readme, /\[Troubleshooting\]\(docs\/TROUBLESHOOTING\.md\)/);
   assert.match(readme, /\[Release guide\]\(docs\/RELEASE\.md\)/);
@@ -59,6 +61,8 @@ test("Chinese README links back to English README and covers alpha basics", () =
   assert.match(readme, /ChatGPT/);
   assert.match(readme, /GitHub Releases/);
   assert.match(readme, /隐私/);
+  assert.match(readme, /点击通知/);
+  assert.match(readme, /状态/);
   assert.match(readme, /MIT License/);
 });
 
@@ -90,10 +94,10 @@ test("release guide covers maintainer package and GitHub release flow", () => {
   const releaseGuide = fs.readFileSync(path.join(ROOT, "docs/RELEASE.md"), "utf8");
 
   assert.match(releaseGuide, /^# Release Guide/m);
-  assert.match(releaseGuide, /0\.1\.0-alpha\.1/);
+  assert.match(releaseGuide, /0\.2\.0-alpha\.1/);
   assert.match(releaseGuide, /npm test/);
   assert.match(releaseGuide, /npm run package/);
   assert.match(releaseGuide, /Inspect the zip/i);
   assert.match(releaseGuide, /GitHub Release/i);
-  assert.match(releaseGuide, /chat-notify-0\.1\.0-alpha\.1\.zip/);
+  assert.match(releaseGuide, /chat-notify-0\.2\.0-alpha\.1\.zip/);
 });

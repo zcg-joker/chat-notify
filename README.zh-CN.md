@@ -13,6 +13,8 @@ Chat Notify 是一个注重隐私的浏览器插件：当 ChatGPT 回复完成�
 - 支持多个标签页，也支持在同一个标签页中切换不同对话时的可观测完成通知。
 - 当可观测的回复完成时，发送浏览器/系统通知。
 - 通知中显示你问题的前几十个字，方便快速识别是哪条问题完成了。
+- 点击通知可以回到并聚焦触发通知的 ChatGPT 标签页。
+- 插件弹窗会显示当前页面、插件、通知健康状态，以及上一次完成状态。
 - Debug logs 默认关闭，只在排查问题时手动开启。
 
 当前 Alpha 版本只支持 ChatGPT：
@@ -25,7 +27,7 @@ Chat Notify 是一个注重隐私的浏览器插件：当 ChatGPT 回复完成�
 推荐从 GitHub Releases 下载最新的插件压缩包，例如：
 
 ```text
-chat-notify-0.1.0-alpha.1.zip
+chat-notify-0.2.0-alpha.1.zip
 ```
 
 下载后：
@@ -65,6 +67,8 @@ npm run package
 
 生成的 zip 会把 `manifest.json` 放在压缩包根目录，因此解压后的文件夹可以直接通过 "Load unpacked" 加载。
 
+当前 Alpha 版本生成的发布包名是 `chat-notify-0.2.0-alpha.1.zip`。
+
 ## 隐私
 
 Chat Notify 不上传、同步或持久化保存聊天内容。它不使用分析服务、外部服务器或云同步。
@@ -94,9 +98,7 @@ Debug logs 默认关闭。开启后，日志可能包含问题摘要，因此不
 - 暂不支持声音提醒。
 - 暂不支持 webhook。
 - 暂不支持云同步。
-- 暂不支持点击通知回到对应标签页。
 
 ## 开源协议
 
 Chat Notify 使用 MIT License 开源。欢迎在 GitHub 上提交 issue 和早期反馈。
-

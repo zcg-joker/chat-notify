@@ -23,6 +23,13 @@ If the test notification fails, ChatGPT monitoring will not be able to show noti
 
 The Alpha intentionally fails closed: if Chat Notify cannot confidently observe a completion, it should avoid sending a misleading notification.
 
+## Completion Notification Click Does Not Focus The Tab
+
+1. Check whether the source ChatGPT tab or browser window was closed before clicking the notification.
+2. Confirm the notification came from a new ChatGPT response completion, not the popup test notification.
+3. Turn on "Debug logs", reproduce the completion, click the notification, and check page console and service worker logs for notification click failures.
+4. Turn "Debug logs" off again after testing.
+
 ## Prompt Excerpt Looks Wrong
 
 Prompt excerpts should come from the message request that started the response. If an excerpt looks stale or incorrect:
@@ -46,6 +53,8 @@ To enable them:
 4. Turn "Debug logs" off.
 
 Debug logs may include prompt excerpts. Do not paste full chat content or sensitive prompt excerpts into public issue reports.
+
+Debug logs can also help diagnose notification click failures, including missing source tab or window details.
 
 ## Page Console Logs
 

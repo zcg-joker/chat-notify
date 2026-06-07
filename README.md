@@ -13,6 +13,8 @@ Chat Notify is a privacy-conscious browser extension that sends a browser/system
 - Supports multiple tabs and same-tab conversation switching when the response lifecycle remains observable.
 - Sends a browser/system notification when an observable response completes.
 - Shows a short excerpt of your prompt in the notification.
+- Click a completion notification to return to and focus the source ChatGPT tab.
+- Shows popup status for the current page, extension, notification health, and last completion.
 - Keeps debug logs off by default.
 
 The Alpha supports ChatGPT only:
@@ -23,6 +25,12 @@ The Alpha supports ChatGPT only:
 ## Install
 
 Recommended for early users: download the latest GitHub Release zip and follow the [Install guide](docs/INSTALL.md).
+
+Current Alpha zip:
+
+```text
+chat-notify-0.2.0-alpha.1.zip
+```
 
 Developers can also clone this repository and load the project directory as an unpacked extension.
 
@@ -51,6 +59,8 @@ The package script creates a clean extension zip under `dist/` for GitHub Releas
 
 The generated zip has `manifest.json` at the archive root so the unzipped folder can be selected directly with "Load unpacked".
 
+For this Alpha, the generated release zip is `chat-notify-0.2.0-alpha.1.zip`.
+
 ## Privacy
 
 Chat Notify does not upload, sync, or persist chat content. It does not use analytics, external servers, or cloud sync.
@@ -72,7 +82,6 @@ If notifications do not appear, first use the popup "Test notification" button. 
 - No sound notifications.
 - No webhook integrations.
 - No cloud sync.
-- No click-to-focus notification behavior yet.
 
 ## Open Source
 

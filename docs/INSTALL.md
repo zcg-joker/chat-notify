@@ -5,7 +5,7 @@ This guide is for the Alpha version of Chat Notify. The extension is not yet ava
 ## Install From A GitHub Release Zip
 
 1. Open the Chat Notify GitHub Releases page.
-2. Download the latest GitHub Release zip, for example `chat-notify-0.1.0-alpha.1.zip`.
+2. Download the latest GitHub Release zip, for example `chat-notify-0.2.0-alpha.1.zip`.
 3. Unzip the file.
 4. Remember the unzipped folder location. You will select this folder in the browser.
 
@@ -32,7 +32,8 @@ This guide is for the Alpha version of Chat Notify. The extension is not yet ava
 1. Click the Chat Notify extension icon.
 2. Click "Test notification".
 3. If the browser or operating system asks for notification permission, allow it.
-4. If no notification appears, check your browser and system notification settings.
+4. Confirm the test notification changes the popup notification status.
+5. If no notification appears, check your browser and system notification settings.
 
 ## Test With ChatGPT
 
@@ -40,6 +41,7 @@ This guide is for the Alpha version of Chat Notify. The extension is not yet ava
 2. Send a short prompt.
 3. Switch to another tab or leave the ChatGPT tab open.
 4. When the response completes, Chat Notify should show a browser/system notification.
+5. Click the completion notification and confirm the ChatGPT tab is focused.
 
 ## Install From Source
 

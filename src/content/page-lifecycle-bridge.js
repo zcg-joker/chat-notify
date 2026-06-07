@@ -446,6 +446,41 @@
 
   installXMLHttpRequestObserver();
 
+  function installEventSourceObserver() {
+    if (typeof window.EventSource !== "function") {
+      return;
+    }
+    const OriginalEventSource = window.EventSource;
+    window.EventSource = function chatNotifyEventSource(url, eventSourceInitDict) {
+      const input = {
+        url: getInputUrl(url) || String(url || ""),
+        method: "GET",
+      };
+      postRequestProbe("eventsource", input, { method: "GET" }, inspectRequest(input));
+      return new OriginalEventSource(url, eventSourceInitDict);
+    };
+    window.EventSource.prototype = OriginalEventSource.prototype;
+  }
+
+  function installWebSocketObserver() {
+    if (typeof window.WebSocket !== "function") {
+      return;
+    }
+    const OriginalWebSocket = window.WebSocket;
+    window.WebSocket = function chatNotifyWebSocket(url, protocols) {
+      const input = {
+        url: getInputUrl(url) || String(url || ""),
+        method: "GET",
+      };
+      postRequestProbe("websocket", input, { method: "GET" }, inspectRequest(input));
+      return new OriginalWebSocket(url, protocols);
+    };
+    window.WebSocket.prototype = OriginalWebSocket.prototype;
+  }
+
+  installEventSourceObserver();
+  installWebSocketObserver();
+
   window.fetch = async function chatNotifyFetch(input, init) {
     const inspected = inspectRequest(input);
     postRequestProbe("fetch", input, init, inspected);

@@ -362,6 +362,14 @@ test("createProbeReport ranks likely generation candidates for adapter design", 
               matched: true,
               reason: "probe_observed_request",
             },
+            {
+              requestKind: "websocket",
+              method: "GET",
+              host: "example.com",
+              path: "/api/chat/socket",
+              matched: true,
+              reason: "probe_observed_request",
+            },
           ],
           events: [],
         },
@@ -370,6 +378,16 @@ test("createProbeReport ranks likely generation candidates for adapter design", 
   });
 
   assert.deepEqual(report.latestFlow.likelyGenerationCandidates, [
+    {
+      requestKind: "websocket",
+      method: "GET",
+      host: "example.com",
+      path: "/api/chat/socket",
+      matched: true,
+      reason: "probe_observed_request",
+      score: 100,
+      signals: ["streaming_transport", "generation_path", "chat_path", "non_post_method"],
+    },
     {
       requestKind: "xhr",
       method: "POST",

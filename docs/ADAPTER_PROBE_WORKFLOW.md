@@ -92,11 +92,11 @@ Use the popup "Start page probe" action while the target tab is active.
 
 The page probe uses Chrome's `activeTab` and `scripting` permissions to inject the existing probe scripts only into the currently active tab. It does not add broad persistent host permissions. The requested probe host must match the active tab host, and the copied report stores only `currentPage.host`, not the full URL.
 
-The unsupported-site adapter is probe-only. It records sanitized same-host fetch/XHR request probes, but it does not normalize lifecycle events, does not start response monitoring, and does not send completion notifications. Its job is to reveal candidate request paths and methods for a future real adapter.
+The unsupported-site adapter is probe-only. It records sanitized same-host fetch, XHR, EventSource, and WebSocket request probes, but it does not inspect WebSocket/EventSource message contents, normalize lifecycle events, start response monitoring, or send completion notifications. Its job is to reveal candidate request paths and methods for a future real adapter.
 
 The visible Recent activity timeline stays small, but the copied diagnostics report also includes `requestCandidates`. These candidates are bounded and de-duplicated separately from the timeline so a busy page does not push useful adapter evidence out of the copied report.
 
-Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
+Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 
 Use `adapterDraft` as a handoff sketch, not as generated production code. It suggests bridge matchers from the strongest candidates and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
 

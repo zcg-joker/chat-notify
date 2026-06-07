@@ -13,6 +13,8 @@ function createBridgeWindow({
   fetchImpl = async () => new Response(null, { status: 204 }),
   ResponseCtor = Response,
   XMLHttpRequestCtor,
+  EventSourceCtor,
+  WebSocketCtor,
   consoleApi,
 } = {}) {
   const messages = [];
@@ -45,6 +47,14 @@ function createBridgeWindow({
   if (XMLHttpRequestCtor) {
     window.XMLHttpRequest = XMLHttpRequestCtor;
     context.XMLHttpRequest = XMLHttpRequestCtor;
+  }
+  if (EventSourceCtor) {
+    window.EventSource = EventSourceCtor;
+    context.EventSource = EventSourceCtor;
+  }
+  if (WebSocketCtor) {
+    window.WebSocket = WebSocketCtor;
+    context.WebSocket = WebSocketCtor;
   }
   if (consoleApi) {
     context.console = consoleApi;
@@ -115,6 +125,24 @@ function createManualFakeXMLHttpRequestClass() {
       for (const listener of this._listeners.get(type) || []) {
         listener.call(this);
       }
+    }
+  };
+}
+
+function createFakeEventSourceClass() {
+  return class FakeEventSource {
+    constructor(url, options) {
+      this.url = url;
+      this.options = options;
+    }
+  };
+}
+
+function createFakeWebSocketClass() {
+  return class FakeWebSocket {
+    constructor(url, protocols) {
+      this.url = url;
+      this.protocols = protocols;
     }
   };
 }
@@ -381,6 +409,59 @@ test("page probe observes same-host fetches even when debug logs are disabled", 
       reason: "probe_observed_request",
     },
   ]);
+});
+
+test("page probe observes same-host EventSource and WebSocket requests", () => {
+  const bridge = createBridgeWindow({
+    location: "https://example.com/chat",
+    EventSourceCtor: createFakeEventSourceClass(),
+    WebSocketCtor: createFakeWebSocketClass(),
+  });
+  installPageProbeBridgeConfig(bridge);
+
+  const eventSource = new bridge.window.EventSource("https://example.com/api/chat/stream?token=secret");
+  const webSocket = new bridge.window.WebSocket("wss://example.com/api/chat/socket?token=secret");
+
+  assert.equal(eventSource.url, "https://example.com/api/chat/stream?token=secret");
+  assert.equal(webSocket.url, "wss://example.com/api/chat/socket?token=secret");
+  assert.deepEqual(JSON.parse(JSON.stringify(bridge.details())), [
+    {
+      eventType: "request_probe",
+      siteId: "page-probe",
+      requestKind: "eventsource",
+      method: "GET",
+      host: "example.com",
+      path: "/api/chat/stream",
+      matched: true,
+      reason: "probe_observed_request",
+    },
+    {
+      eventType: "request_probe",
+      siteId: "page-probe",
+      requestKind: "websocket",
+      method: "GET",
+      host: "example.com",
+      path: "/api/chat/socket",
+      matched: true,
+      reason: "probe_observed_request",
+    },
+  ]);
+  const serialized = JSON.stringify(bridge.details());
+  assert.equal(serialized.includes("token=secret"), false);
+});
+
+test("page probe ignores cross-host EventSource and WebSocket requests", () => {
+  const bridge = createBridgeWindow({
+    location: "https://example.com/chat",
+    EventSourceCtor: createFakeEventSourceClass(),
+    WebSocketCtor: createFakeWebSocketClass(),
+  });
+  installPageProbeBridgeConfig(bridge);
+
+  new bridge.window.EventSource("https://other.example/api/chat/stream");
+  new bridge.window.WebSocket("wss://other.example/api/chat/socket");
+
+  assert.deepEqual(bridge.details(), []);
 });
 
 test("page probe ignores cross-host fetches", async () => {

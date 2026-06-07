@@ -88,8 +88,14 @@
   function scoreGenerationCandidate(request) {
     const path = cleanString(request.path).toLowerCase();
     const method = cleanString(request.method).toUpperCase();
+    const requestKind = cleanString(request.requestKind).toLowerCase();
     const signals = [];
     let score = 0;
+
+    if (requestKind === "eventsource" || requestKind === "websocket") {
+      score += 60;
+      addCandidateSignal(signals, "streaming_transport");
+    }
 
     const isPost = method === "POST";
     if (isPost) {

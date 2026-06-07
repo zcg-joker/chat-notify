@@ -388,6 +388,50 @@
     };
   }
 
+  function createStableAdapterDraft(currentPage, probeComparison) {
+    const stableCandidates = probeComparison && Array.isArray(probeComparison.stableCandidates)
+      ? probeComparison.stableCandidates
+      : [];
+    if (!stableCandidates.length) {
+      return null;
+    }
+    const host = cleanString(currentPage.host).toLowerCase();
+    if (!host) {
+      return null;
+    }
+    const topCandidate = stableCandidates[0];
+    const matchers = stableCandidates
+      .filter((candidate) => candidate.score >= 50)
+      .map((candidate) => ({ pathname: candidate.path }))
+      .slice(0, 3);
+    const scenarios = Array.isArray(topCandidate.scenarios) ? topCandidate.scenarios : [];
+    const siteIdSuggestion = createSuggestionId(host);
+    return {
+      host,
+      siteIdSuggestion,
+      displayNameSuggestion: createDisplayNameSuggestion(siteIdSuggestion),
+      confidence: topCandidate.score >= 90 ? "medium" : "low",
+      promptExtractorSuggestion: "none",
+      lifecycleBridgeConfigSuggestion: {
+        hosts: [host],
+        generationRequestMatchers: matchers.length ? matchers : [{ pathname: topCandidate.path }],
+      },
+      source: "probeComparison.stableCandidates",
+      rationale: [
+        `Stable candidate ${topCandidate.path} appeared in ${
+          topCandidate.stability || `${topCandidate.sampleCount || 0}/${probeComparison.sampleCount || 0}`
+        } retained probe samples.`,
+        scenarios.length ? `Covered scenarios: ${scenarios.join(", ")}.` : "No named probe scenarios were retained.",
+        "Candidate paths are same-host and sanitized; query strings, bodies, and headers are omitted.",
+      ],
+      manualChecks: [
+        "Confirm the top matcher stays open until the visible AI response is complete.",
+        "Confirm prompt extraction can use visible editor text or implement a safe request-body extractor.",
+        "Confirm send detection, session key extraction, cancellation, and same-tab session switching.",
+      ],
+    };
+  }
+
   function createCandidateSummary(candidate, index) {
     return `${index + 1}. ${candidate.method || "GET"} ${candidate.path || "/"} via ${
       candidate.requestKind || "request"
@@ -488,6 +532,7 @@
     const settings = input.settings || {};
     const probeComparison = createProbeComparison(diagnostics.probeSamples);
     const recommendation = createProbeRecommendation(probeComparison);
+    const adapterDraft = createStableAdapterDraft(currentPage, probeComparison);
     const report = {
       schemaVersion: 1,
       generatedAt: Number.isFinite(input.generatedAt) ? input.generatedAt : Date.now(),
@@ -501,6 +546,7 @@
       },
       probeComparison,
       recommendation,
+      adapterDraft,
       latestFlow: null,
     };
 

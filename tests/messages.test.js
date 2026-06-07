@@ -240,6 +240,7 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
         "Run page probe for a long response.",
       ],
     },
+    adapterDraft: null,
     latestFlow: {
       flowId: "chatgpt:1780761600000:1",
       siteId: "chatgpt",
@@ -745,6 +746,28 @@ test("createProbeReport compares probe samples and highlights stable candidates"
     nextActions: [
       "Confirm the candidate stays active until visible completion.",
       "Use the stable candidate as the first adapter matcher draft.",
+    ],
+  });
+  assert.deepEqual(report.adapterDraft, {
+    host: "example.com",
+    siteIdSuggestion: "example",
+    displayNameSuggestion: "Example",
+    confidence: "medium",
+    promptExtractorSuggestion: "none",
+    lifecycleBridgeConfigSuggestion: {
+      hosts: ["example.com"],
+      generationRequestMatchers: [{ pathname: "/api/chat/stream" }],
+    },
+    source: "probeComparison.stableCandidates",
+    rationale: [
+      "Stable candidate /api/chat/stream appeared in 2/2 retained probe samples.",
+      "Covered scenarios: short_response, long_response.",
+      "Candidate paths are same-host and sanitized; query strings, bodies, and headers are omitted.",
+    ],
+    manualChecks: [
+      "Confirm the top matcher stays open until the visible AI response is complete.",
+      "Confirm prompt extraction can use visible editor text or implement a safe request-body extractor.",
+      "Confirm send detection, session key extraction, cancellation, and same-tab session switching.",
     ],
   });
 

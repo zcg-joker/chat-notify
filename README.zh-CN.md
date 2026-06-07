@@ -2,25 +2,29 @@
 
 [English README](README.md)
 
-Chat Notify 是一个注重隐私的浏览器插件：当 ChatGPT 回复完成时，它会通过浏览器/系统通知提醒你。
+Chat Notify 是一个注重隐私的浏览器插件：当 ChatGPT 或 Gemini 回复完成时，它会通过浏览器/系统通知提醒你。
 
 > Alpha 状态：当前版本已经可以通过 GitHub Releases 进行早期测试，但还没有发布到 Chrome Web Store 或 Edge Add-ons。
 
 ## 它能做什么
 
-- 只在你主动发送 ChatGPT 消息后开始监控。
-- 支持多个正在运行的 ChatGPT 会话。
+- 只在你主动发送 ChatGPT 或 Gemini 消息后开始监控。
+- 支持多个正在运行的 ChatGPT 和 Gemini 会话。
 - 支持多个标签页，也支持在同一个标签页中切换不同对话时的可观测完成通知。
 - 当可观测的回复完成时，发送浏览器/系统通知。
 - 通知中显示你问题的前几十个字，方便快速识别是哪条问题完成了。
-- 点击通知可以回到并聚焦触发通知的 ChatGPT 标签页。
-- 插件弹窗会显示当前页面、插件、通知健康状态，以及上一次完成状态。
+- 点击通知可以回到并聚焦触发通知的标签页。
+- 插件弹窗会显示当前页面、插件、通知健康状态、上一次完成状态，以及最近活动诊断。
+- 最近活动会显示最新一次监控流程到达了哪一步。
 - Debug logs 默认关闭，只在排查问题时手动开启。
 
-当前 Alpha 版本只支持 ChatGPT：
+当前 Alpha 版本支持 ChatGPT 和常规 Gemini 网页应用：
 
 - `https://chatgpt.com/*`
 - `https://chat.openai.com/*`
+- `https://gemini.google.com/*`
+
+Gemini 支持目前是 MVP，目标站点是 `gemini.google.com`。
 
 ## 普通用户安装
 
@@ -55,7 +59,7 @@ npm test
 4. 启用开发者模式。
 5. 点击 "Load unpacked"。
 6. 选择本仓库目录。
-7. 打开 ChatGPT 并发送一条消息。
+7. 打开 ChatGPT 或 Gemini 并发送一条消息。
 
 ## 打包发布
 
@@ -73,25 +77,28 @@ npm run package
 
 Chat Notify 不上传、同步或持久化保存聊天内容。它不使用分析服务、外部服务器或云同步。
 
-问题摘要只会在当前待完成回复的本地内存中短暂保存，并会在通知、取消、超时或放弃监控后清除。
+通知中的问题摘要很短，只用于帮助识别哪条回复已经完成。
+
+最近活动诊断只保存在本地，数量有限。它可能包含清理后的简短问题摘要和流程元数据，例如最新监控流程到达的阶段。它不保存完整问题内容、完整聊天内容、助手回复文本、请求或响应正文、令牌或 URL。
 
 Debug logs 默认关闭。开启后，日志可能包含问题摘要，因此不要把包含敏感信息的日志公开发布。
 
 ## 排障
 
-如果没有看到通知，请先点击插件弹窗中的 "Test notification"。
+如果没有看到通知，请先查看插件弹窗中的最近活动，确认最新一次监控流程到达了哪一步。之后如需更多 console 细节，再开启 Debug logs。
 
 更详细的排查步骤见 [Troubleshooting](docs/TROUBLESHOOTING.md)，包括：
 
 - 测试通知不出现。
-- ChatGPT 回复完成后没有通知。
+- ChatGPT 或 Gemini 回复完成后没有通知。
+- 如何查看最近活动诊断。
 - 通知里的问题摘要不准确。
 - 如何开启 Debug logs。
 - 如何查看页面 console 和 service worker 日志。
 
 ## 当前限制
 
-- 仅支持 ChatGPT。
+- Gemini 支持目前是 MVP，目标站点是 `gemini.google.com`。
 - 仅支持 Chrome 和 Edge Chromium。
 - Alpha 版本需要手动安装 zip。
 - 暂未上架 Chrome Web Store 或 Edge Add-ons。

@@ -2,25 +2,29 @@
 
 [中文说明](README.zh-CN.md)
 
-Chat Notify is a privacy-conscious browser extension that sends a browser/system notification when ChatGPT finishes responding.
+Chat Notify is a privacy-conscious browser extension that sends a browser/system notification when ChatGPT or Gemini finishes responding.
 
 > Alpha status: this project is ready for early GitHub testing, but it is not yet published on the Chrome Web Store or Edge Add-ons.
 
 ## What It Does
 
-- Starts monitoring only after you send a ChatGPT message.
-- Supports multiple active ChatGPT sessions.
+- Starts monitoring only after you send a ChatGPT or Gemini message.
+- Supports multiple active ChatGPT and Gemini sessions.
 - Supports multiple tabs and same-tab conversation switching when the response lifecycle remains observable.
 - Sends a browser/system notification when an observable response completes.
 - Shows a short excerpt of your prompt in the notification.
-- Click a completion notification to return to and focus the source ChatGPT tab.
-- Shows popup status for the current page, extension, notification health, and last completion.
+- Click a completion notification to return to and focus the source tab.
+- Shows popup status for the current page, extension, notification health, last completion, and Recent activity diagnostics.
+- Recent activity shows where the latest monitoring flow reached.
 - Keeps debug logs off by default.
 
-The Alpha supports ChatGPT only:
+The current Alpha supports ChatGPT and the regular Gemini web app:
 
 - `https://chatgpt.com/*`
 - `https://chat.openai.com/*`
+- `https://gemini.google.com/*`
+
+Gemini support is MVP and targets `gemini.google.com`.
 
 ## Install
 
@@ -47,7 +51,7 @@ To load from source:
 3. Enable Developer mode.
 4. Click "Load unpacked".
 5. Select this repository directory.
-6. Open ChatGPT and send a message.
+6. Open ChatGPT or Gemini and send a message.
 
 ## Package A Release Zip
 
@@ -65,17 +69,19 @@ For this Alpha, the generated release zip is `chat-notify-0.2.0-alpha.1.zip`.
 
 Chat Notify does not upload, sync, or persist chat content. It does not use analytics, external servers, or cloud sync.
 
-Prompt excerpts are kept only in local extension memory for the active response and are cleared after notification, cancellation, timeout, or abandonment.
+Notification prompt excerpts are short and are used to help identify the completed response.
+
+Recent activity diagnostics are local and bounded. They may include a sanitized short prompt excerpt plus flow metadata such as the latest stage reached. They do not store full prompt contents, full chat content, assistant text, request or response bodies, tokens, or URLs.
 
 Debug logs are disabled by default. When enabled, logs may include prompt excerpts for diagnostics, so avoid posting sensitive logs publicly.
 
 ## Troubleshooting
 
-If notifications do not appear, first use the popup "Test notification" button. For detailed steps, see [Troubleshooting](docs/TROUBLESHOOTING.md).
+If notifications do not appear, check popup Recent activity first to see where the latest monitoring flow reached. Then enable debug logs for console details if needed. For detailed steps, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
 ## Current Limits
 
-- ChatGPT only.
+- Gemini support is MVP and targets `gemini.google.com`.
 - Chrome and Edge Chromium only.
 - Alpha release zip must be installed manually.
 - No Chrome Web Store or Edge Add-ons listing yet.

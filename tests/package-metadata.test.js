@@ -43,13 +43,31 @@ test("README presents alpha release information and links to docs", () => {
   assert.match(readme, /\[中文说明\]\(README\.zh-CN\.md\)/);
   assert.match(readme, /Alpha/i);
   assert.match(readme, /GitHub Releases/i);
-  assert.match(readme, /ChatGPT only/i);
+  assert.match(readme, /ChatGPT/i);
+  assert.match(readme, /Gemini/i);
   assert.match(readme, /privacy-conscious/i);
   assert.match(readme, /Click a completion notification/i);
   assert.match(readme, /popup status/i);
   assert.match(readme, /\[Install guide\]\(docs\/INSTALL\.md\)/);
   assert.match(readme, /\[Troubleshooting\]\(docs\/TROUBLESHOOTING\.md\)/);
   assert.match(readme, /\[Release guide\]\(docs\/RELEASE\.md\)/);
+});
+
+test("README mentions Gemini and diagnostics", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+
+  assert.match(readme, /Gemini/);
+  assert.match(readme, /recent activity|diagnostics/i);
+});
+
+test("README explains diagnostics privacy boundaries", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");
+
+  assert.match(readme, /diagnostics.+local.+bounded/is);
+  assert.match(readme, /sanitized short prompt excerpt/i);
+  assert.match(readme, /flow metadata/i);
+  assert.match(readme, /do not store full prompt/i);
+  assert.match(readme, /full chat content/i);
 });
 
 test("Chinese README links back to English README and covers alpha basics", () => {
@@ -66,6 +84,23 @@ test("Chinese README links back to English README and covers alpha basics", () =
   assert.match(readme, /MIT License/);
 });
 
+test("Chinese README mentions Gemini and recent activity diagnostics", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.zh-CN.md"), "utf8");
+
+  assert.match(readme, /Gemini/);
+  assert.match(readme, /最近活动|诊断/);
+});
+
+test("Chinese README explains diagnostics privacy boundaries", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.zh-CN.md"), "utf8");
+
+  assert.match(readme, /诊断.+本地.+有限/s);
+  assert.match(readme, /清理后的简短问题摘要/);
+  assert.match(readme, /流程元数据/);
+  assert.match(readme, /不保存完整问题/);
+  assert.match(readme, /完整聊天内容/);
+});
+
 test("install guide covers release zip and browser loading steps", () => {
   const installGuide = fs.readFileSync(path.join(ROOT, "docs/INSTALL.md"), "utf8");
 
@@ -78,16 +113,41 @@ test("install guide covers release zip and browser loading steps", () => {
   assert.match(installGuide, /Update/i);
 });
 
+test("install guide explains diagnostics privacy boundaries", () => {
+  const installGuide = fs.readFileSync(path.join(ROOT, "docs/INSTALL.md"), "utf8");
+
+  assert.match(installGuide, /diagnostics.+local.+bounded/is);
+  assert.match(installGuide, /sanitized short prompt excerpt/i);
+  assert.match(installGuide, /do not store full prompt/i);
+  assert.match(installGuide, /full chat content/i);
+});
+
 test("troubleshooting guide covers notification and debug diagnostics", () => {
   const troubleshooting = fs.readFileSync(path.join(ROOT, "docs/TROUBLESHOOTING.md"), "utf8");
 
   assert.match(troubleshooting, /^# Troubleshooting/m);
   assert.match(troubleshooting, /Test notification does not appear/i);
-  assert.match(troubleshooting, /ChatGPT response completion notification does not appear/i);
+  assert.match(troubleshooting, /ChatGPT or Gemini response completion notification does not appear/i);
   assert.match(troubleshooting, /Prompt excerpt looks wrong/i);
   assert.match(troubleshooting, /Debug logs/i);
   assert.match(troubleshooting, /service worker/i);
   assert.match(troubleshooting, /Do not paste full chat content/i);
+});
+
+test("troubleshooting guide covers recent activity diagnostics", () => {
+  const guide = fs.readFileSync(path.join(ROOT, "docs", "TROUBLESHOOTING.md"), "utf8");
+
+  assert.match(guide, /Recent activity|最近活动|diagnostics/i);
+});
+
+test("troubleshooting guide explains diagnostics privacy boundaries", () => {
+  const guide = fs.readFileSync(path.join(ROOT, "docs", "TROUBLESHOOTING.md"), "utf8");
+
+  assert.match(guide, /diagnostics.+local.+bounded/is);
+  assert.match(guide, /sanitized short prompt excerpt/i);
+  assert.match(guide, /flow metadata/i);
+  assert.match(guide, /do not store full prompt/i);
+  assert.match(guide, /request or response bodies/i);
 });
 
 test("release guide covers maintainer package and GitHub release flow", () => {

@@ -12,9 +12,29 @@
         <img src="../../assets/icon.svg" alt="" class="icon">
         <div>
           <h1>Chat Notify</h1>
-          <p id="site-status">Checking page...</p>
+          <p>Completion alerts for ChatGPT</p>
         </div>
       </header>
+
+      <section class="status-area" aria-label="Status">
+        <div class="status-row">
+          <span>Page</span>
+          <strong id="site-status">Checking page...</strong>
+        </div>
+        <div class="status-row">
+          <span>Extension</span>
+          <strong id="extension-status">Checking...</strong>
+        </div>
+        <div class="status-row">
+          <span>Notifications</span>
+          <strong id="notification-status">Not tested yet</strong>
+        </div>
+        <p id="notification-detail" class="notification-detail"></p>
+        <div class="status-row">
+          <span>Last completion</span>
+          <strong id="completion-status">No completions yet</strong>
+        </div>
+      </section>
 
       <label class="toggle-row">
         <span>Enabled</span>

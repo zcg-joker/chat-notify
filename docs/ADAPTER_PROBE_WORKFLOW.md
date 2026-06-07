@@ -36,6 +36,7 @@ The copied report is intentionally small and adapter-focused.
 - `recommendation.primaryCandidate`: the strongest stable sanitized request candidate, when one exists.
 - `recommendation.nextActions`: concrete follow-up checks for the next probe or adapter-draft step.
 - `handoffSummary`: human-readable safe summary lines for quick issue triage and adapter handoff.
+- `adapterChecklist`: structured implementation checklist with `ready`, `needs_more_evidence`, and `manual_check` items.
 - `adapterDraft`: a first-pass adapter draft generated from `probeComparison.stableCandidates`, only when `recommendation.status` is `ready_for_adapter_draft`.
 - `adapterDraft.excludedRequestCandidates`: stable ignored candidates to keep out of generation matchers.
 - `adapterDraft.implementationNotes`: structured adapter handoff notes for lifecycle matchers, prompt extraction, send detection, session keys, and edge-case checks.
@@ -116,6 +117,8 @@ Recent page-probe flows are also retained as bounded `probeSamples`. Each sample
 Use `recommendation` as the first triage result for retained probe samples. `insufficient_evidence` means the report does not yet have enough samples to choose a matcher. `collect_more_samples` means a stable candidate exists, but key scenarios such as `short_response` or `long_response` still need evidence. `ready_for_adapter_draft` means the strongest stable candidate covers both short and long responses and is ready to become a first adapter matcher draft, after manual timing checks.
 
 Use `handoffSummary` when quickly reading copied diagnostics or pasting a compact issue note. It restates only sanitized host/path evidence, covered and missing scenarios, the first recommended next action, and whether an `adapterDraft` is ready. It is not a substitute for the structured fields, but it helps a maintainer decide whether the next step is more probing or adapter implementation.
+
+Use `adapterChecklist` as the implementation gate for a new site. Items marked `ready` have enough sanitized probe evidence for a first implementation pass. Items marked `needs_more_evidence` need more probe samples before a production adapter should rely on them. Items marked `manual_check` require real-browser inspection or site-specific adapter code, such as send detection, prompt extraction, session keys, cancellation, and same-tab session switching.
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 

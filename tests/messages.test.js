@@ -248,6 +248,70 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
       "Next: Run page probe for a short response.",
       "Adapter draft is not ready yet.",
     ],
+    adapterChecklist: [
+      {
+        item: "host_matcher",
+        status: "ready",
+        evidence: ["chatgpt.com"],
+        nextStep: "Use the sanitized host as the adapter host matcher.",
+      },
+      {
+        item: "generation_request_matcher",
+        status: "needs_more_evidence",
+        evidence: [],
+        nextStep: "Collect missing key scenarios before drafting the adapter matcher.",
+      },
+      {
+        item: "scenario_coverage",
+        status: "needs_more_evidence",
+        evidence: [],
+        missing: [
+          "short_response",
+          "long_response",
+          "tab_switch",
+          "same_tab_session_switch",
+          "canceled_generation",
+          "failed_generation",
+        ],
+        nextStep: "Collect missing scenario probes before release-quality support.",
+      },
+      {
+        item: "noise_filters",
+        status: "manual_check",
+        evidence: [],
+        nextStep: "Confirm telemetry, prepare, warmup, metadata, and list-refresh requests stay excluded.",
+      },
+      {
+        item: "prompt_extraction",
+        status: "manual_check",
+        evidence: ["none"],
+        nextStep: "Use visible editor text first, or add a safe request-body excerpt extractor.",
+      },
+      {
+        item: "send_detection",
+        status: "manual_check",
+        evidence: [],
+        nextStep: "Confirm the page exposes a reliable button, keyboard, or editor-submit signal.",
+      },
+      {
+        item: "session_key",
+        status: "manual_check",
+        evidence: [],
+        nextStep: "Extract a stable conversation id when available, otherwise use a temporary per-tab key.",
+      },
+      {
+        item: "edge_cases",
+        status: "manual_check",
+        evidence: [],
+        nextStep: "Confirm cancellation, failed generation, and same-tab session switching behavior.",
+      },
+      {
+        item: "privacy_boundary",
+        status: "ready",
+        evidence: ["sanitized host/path metadata only"],
+        nextStep: "Do not add raw prompts, assistant text, bodies, headers, cookies, tokens, or full URLs.",
+      },
+    ],
     adapterDraft: null,
     latestFlow: {
       flowId: "chatgpt:1780761600000:1",
@@ -779,6 +843,63 @@ test("createProbeReport compares probe samples and highlights stable candidates"
     "Next: Confirm the candidate stays active until visible completion.",
     "Adapter draft is available with implementationNotes.",
   ]);
+  assert.deepEqual(report.adapterChecklist, [
+    {
+      item: "host_matcher",
+      status: "ready",
+      evidence: ["example.com"],
+      nextStep: "Use the sanitized host as the adapter host matcher.",
+    },
+    {
+      item: "generation_request_matcher",
+      status: "ready",
+      evidence: ["POST example.com/api/chat/stream via fetch, stability 2/2"],
+      nextStep: "Confirm the matcher stays active until visible completion.",
+    },
+    {
+      item: "scenario_coverage",
+      status: "needs_more_evidence",
+      evidence: ["short_response", "long_response"],
+      missing: ["tab_switch", "same_tab_session_switch", "canceled_generation", "failed_generation"],
+      nextStep: "Collect missing scenario probes before release-quality support.",
+    },
+    {
+      item: "noise_filters",
+      status: "ready",
+      evidence: ["/api/prepare"],
+      nextStep: "Keep stable ignored candidates out of generation matchers.",
+    },
+    {
+      item: "prompt_extraction",
+      status: "manual_check",
+      evidence: ["none"],
+      nextStep: "Use visible editor text first, or add a safe request-body excerpt extractor.",
+    },
+    {
+      item: "send_detection",
+      status: "manual_check",
+      evidence: [],
+      nextStep: "Confirm the page exposes a reliable button, keyboard, or editor-submit signal.",
+    },
+    {
+      item: "session_key",
+      status: "manual_check",
+      evidence: [],
+      nextStep: "Extract a stable conversation id when available, otherwise use a temporary per-tab key.",
+    },
+    {
+      item: "edge_cases",
+      status: "manual_check",
+      evidence: [],
+      nextStep: "Confirm cancellation, failed generation, and same-tab session switching behavior.",
+    },
+    {
+      item: "privacy_boundary",
+      status: "ready",
+      evidence: ["sanitized host/path metadata only"],
+      nextStep: "Do not add raw prompts, assistant text, bodies, headers, cookies, tokens, or full URLs.",
+    },
+  ]);
   assert.deepEqual(report.adapterDraft, {
     host: "example.com",
     siteIdSuggestion: "example",
@@ -914,6 +1035,19 @@ test("createProbeReport recommends collecting missing key scenarios", () => {
     "Next: Run page probe for a long response.",
     "Adapter draft is not ready yet.",
   ]);
+  assert.deepEqual(report.adapterChecklist[1], {
+    item: "generation_request_matcher",
+    status: "needs_more_evidence",
+    evidence: ["POST example.com/api/chat/stream via fetch, stability 2/2"],
+    nextStep: "Collect missing key scenarios before drafting the adapter matcher.",
+  });
+  assert.deepEqual(report.adapterChecklist[2], {
+    item: "scenario_coverage",
+    status: "needs_more_evidence",
+    evidence: ["short_response"],
+    missing: ["long_response", "tab_switch", "same_tab_session_switch", "canceled_generation", "failed_generation"],
+    nextStep: "Collect missing scenario probes before release-quality support.",
+  });
   assert.equal(report.adapterDraft, null);
 });
 

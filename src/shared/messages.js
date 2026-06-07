@@ -483,6 +483,115 @@
     return summary;
   }
 
+  function formatChecklistCandidate(candidate, fallbackHost) {
+    if (!candidate) {
+      return "";
+    }
+    return `${[
+      candidate.method,
+      `${candidate.host || fallbackHost}${candidate.path || ""}`,
+      "via",
+      candidate.requestKind,
+    ].filter(Boolean).join(" ")}, stability ${candidate.stability || "unknown"}`;
+  }
+
+  function createAdapterChecklist(currentPage, recommendation, probeComparison, adapterDraft) {
+    const host = cleanString(currentPage.host).toLowerCase();
+    const primaryCandidate = recommendation && recommendation.primaryCandidate;
+    const coveredScenarios = probeComparison && Array.isArray(probeComparison.scenarioCoverage)
+      ? probeComparison.scenarioCoverage
+          .filter((entry) => entry && entry.sampleCount > 0 && entry.scenario)
+          .map((entry) => entry.scenario)
+      : [];
+    const missingCoverageScenarios = probeComparison && Array.isArray(probeComparison.scenarioCoverage)
+      ? probeComparison.scenarioCoverage
+          .filter((entry) => entry && entry.sampleCount === 0 && entry.scenario)
+          .map((entry) => entry.scenario)
+      : COVERAGE_SCENARIOS.slice();
+    const recommendationMissingScenarios = recommendation && Array.isArray(recommendation.missingScenarios)
+      ? recommendation.missingScenarios
+      : [];
+    const matcherReady = Boolean(adapterDraft);
+    const excludedPathnames = adapterDraft &&
+      adapterDraft.implementationNotes &&
+      adapterDraft.implementationNotes.lifecycle &&
+      Array.isArray(adapterDraft.implementationNotes.lifecycle.excludedPathnames)
+      ? adapterDraft.implementationNotes.lifecycle.excludedPathnames
+      : [];
+
+    return [
+      {
+        item: "host_matcher",
+        status: host ? "ready" : "needs_more_evidence",
+        evidence: host ? [host] : [],
+        nextStep: host
+          ? "Use the sanitized host as the adapter host matcher."
+          : "Collect diagnostics from a normal HTTPS page with a stable hostname.",
+      },
+      {
+        item: "generation_request_matcher",
+        status: matcherReady ? "ready" : "needs_more_evidence",
+        evidence: primaryCandidate ? [formatChecklistCandidate(primaryCandidate, host)] : [],
+        nextStep: matcherReady
+          ? "Confirm the matcher stays active until visible completion."
+          : "Collect missing key scenarios before drafting the adapter matcher.",
+      },
+      {
+        item: "scenario_coverage",
+        status: missingCoverageScenarios.length ? "needs_more_evidence" : "ready",
+        evidence: coveredScenarios,
+        missing: uniqueStrings([...recommendationMissingScenarios, ...missingCoverageScenarios]),
+        nextStep: missingCoverageScenarios.length
+          ? "Collect missing scenario probes before release-quality support."
+          : "Use the retained scenario evidence as regression-test input.",
+      },
+      {
+        item: "noise_filters",
+        status: excludedPathnames.length ? "ready" : "manual_check",
+        evidence: excludedPathnames,
+        nextStep: excludedPathnames.length
+          ? "Keep stable ignored candidates out of generation matchers."
+          : "Confirm telemetry, prepare, warmup, metadata, and list-refresh requests stay excluded.",
+      },
+      {
+        item: "prompt_extraction",
+        status: "manual_check",
+        evidence: [adapterDraft ? adapterDraft.promptExtractorSuggestion : "none"],
+        nextStep: adapterDraft && adapterDraft.implementationNotes
+          ? adapterDraft.implementationNotes.promptExtraction.nextStep
+          : "Use visible editor text first, or add a safe request-body excerpt extractor.",
+      },
+      {
+        item: "send_detection",
+        status: "manual_check",
+        evidence: [],
+        nextStep: adapterDraft && adapterDraft.implementationNotes
+          ? adapterDraft.implementationNotes.sendDetection.nextStep
+          : "Confirm the page exposes a reliable button, keyboard, or editor-submit signal.",
+      },
+      {
+        item: "session_key",
+        status: "manual_check",
+        evidence: [],
+        nextStep: adapterDraft && adapterDraft.implementationNotes
+          ? adapterDraft.implementationNotes.sessionKey.nextStep
+          : "Extract a stable conversation id when available, otherwise use a temporary per-tab key.",
+      },
+      {
+        item: "edge_cases",
+        status: "manual_check",
+        evidence: [],
+        nextStep: "Confirm cancellation, failed generation, and same-tab session switching behavior.",
+      },
+      {
+        item: "privacy_boundary",
+        status: "ready",
+        evidence: ["sanitized host/path metadata only"],
+        nextStep: "Do not add raw prompts, assistant text, bodies, headers, cookies, tokens, or full URLs.",
+      },
+    ];
+  }
+
   function createStableAdapterDraft(currentPage, probeComparison) {
     const stableCandidates = probeComparison && Array.isArray(probeComparison.stableCandidates)
       ? probeComparison.stableCandidates
@@ -658,6 +767,7 @@
       probeComparison,
       recommendation,
       handoffSummary: createProbeHandoffSummary(currentPage, recommendation, probeComparison, adapterDraft),
+      adapterChecklist: createAdapterChecklist(currentPage, recommendation, probeComparison, adapterDraft),
       adapterDraft,
       latestFlow: null,
     };

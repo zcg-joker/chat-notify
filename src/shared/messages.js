@@ -199,6 +199,76 @@
     };
   }
 
+  function createCandidateSummary(candidate, index) {
+    return `${index + 1}. ${candidate.method || "GET"} ${candidate.path || "/"} via ${
+      candidate.requestKind || "request"
+    } scored ${candidate.score} (${candidate.signals.join(", ")}).`;
+  }
+
+  function createAdapterAnalysis(likelyGenerationCandidates, requestCandidates) {
+    if (!likelyGenerationCandidates.length) {
+      return {
+        readiness: "insufficient_evidence",
+        topCandidate: null,
+        candidateSummary: [],
+        riskSignals: [
+          "No likely generation candidates were found; collect another probe report after sending a short prompt.",
+        ],
+        nextChecks: [
+          "Confirm the page probe was started before sending the prompt.",
+          "Enable debug logs only if console-level bridge details are needed.",
+        ],
+      };
+    }
+
+    const topCandidate = likelyGenerationCandidates[0];
+    const candidateSummary = likelyGenerationCandidates.slice(0, 3).map(createCandidateSummary);
+    const allSignals = new Set(likelyGenerationCandidates.flatMap((candidate) => candidate.signals));
+    const riskSignals = [];
+    if (allSignals.has("streaming_transport")) {
+      riskSignals.push(
+        "Top candidate uses a streaming transport; URL matching is visible, but message contents are not inspected by probe mode."
+      );
+    }
+    if (
+      requestCandidates.some((candidate) =>
+        (candidate.path || "").toLowerCase().match(/prepare|warmup|bootstrap|init/)
+      )
+    ) {
+      riskSignals.push(
+        "Prepare/warmup candidates were observed; keep them out of generation matchers unless completion evidence proves otherwise."
+      );
+    }
+    if (allSignals.has("metadata_path")) {
+      riskSignals.push(
+        "Metadata or conversation-list candidates were observed; avoid using them as completion signals."
+      );
+    }
+    if (!riskSignals.length) {
+      riskSignals.push("No obvious noise signals were found in the strongest candidates.");
+    }
+
+    return {
+      readiness: "needs_manual_verification",
+      topCandidate: {
+        requestKind: topCandidate.requestKind,
+        method: topCandidate.method,
+        host: topCandidate.host,
+        path: topCandidate.path,
+        score: topCandidate.score,
+        signals: topCandidate.signals,
+      },
+      candidateSummary,
+      riskSignals,
+      nextChecks: [
+        "Verify whether the top candidate stays active until the visible answer is complete.",
+        "Send a longer prompt and confirm the same candidate remains the strongest signal.",
+        "Switch away from the tab during generation and confirm the candidate is still observed.",
+        "Check cancellation/failure behavior before sending completion notifications.",
+      ],
+    };
+  }
+
   function createProbeReport(input = {}) {
     const status = input.popupStatus || {};
     const diagnostics = status.diagnostics || {};
@@ -243,6 +313,7 @@
 
     if (flow) {
       const adapterDraft = createAdapterDraft(report.currentPage, likelyGenerationCandidates);
+      const analysis = createAdapterAnalysis(likelyGenerationCandidates, requestCandidates);
       report.latestFlow = {
         flowId: cleanString(flow.flowId),
         siteId: cleanString(flow.siteId),
@@ -262,6 +333,7 @@
         requestCandidates,
         likelyGenerationCandidates,
         adapterDraft,
+        analysis,
         matchedRequests,
         ignoredRequests,
         events,

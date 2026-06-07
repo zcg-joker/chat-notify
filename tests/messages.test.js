@@ -245,6 +245,18 @@ test("createProbeReport builds a sanitized adapter-focused report", () => {
       ],
       likelyGenerationCandidates: [],
       adapterDraft: null,
+      analysis: {
+        readiness: "insufficient_evidence",
+        topCandidate: null,
+        candidateSummary: [],
+        riskSignals: [
+          "No likely generation candidates were found; collect another probe report after sending a short prompt.",
+        ],
+        nextChecks: [
+          "Confirm the page probe was started before sending the prompt.",
+          "Enable debug logs only if console-level bridge details are needed.",
+        ],
+      },
       matchedRequests: [
         {
           requestKind: "fetch",
@@ -494,6 +506,78 @@ test("createProbeReport creates an adapter draft from likely generation candidat
   const serialized = JSON.stringify(report.latestFlow.adapterDraft);
   assert.equal(serialized.includes("conversation=secret"), false);
   assert.equal(serialized.includes("token=secret"), false);
+});
+
+test("createProbeReport includes an adapter readiness analysis", () => {
+  const report = createProbeReport({
+    generatedAt: 1780761600000,
+    currentPage: {
+      supported: false,
+      host: "example.com",
+    },
+    settings: {
+      enabled: true,
+      debugLogs: false,
+    },
+    popupStatus: {
+      diagnostics: {
+        latestFlow: {
+          flowId: "probe:example.com:1780761600000",
+          siteId: "page-probe",
+          displayName: "Page Probe",
+          updatedAt: 1780761602000,
+          requestCandidates: [
+            {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/prepare?token=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+            {
+              requestKind: "eventsource",
+              method: "GET",
+              host: "example.com",
+              path: "/api/chat/events?conversation=secret",
+              matched: true,
+              reason: "probe_observed_request",
+            },
+          ],
+          events: [],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(report.latestFlow.analysis, {
+    readiness: "needs_manual_verification",
+    topCandidate: {
+      requestKind: "eventsource",
+      method: "GET",
+      host: "example.com",
+      path: "/api/chat/events",
+      score: 110,
+      signals: ["streaming_transport", "generation_path", "stream_path", "chat_path", "non_post_method"],
+    },
+    candidateSummary: [
+      "1. GET /api/chat/events via eventsource scored 110 (streaming_transport, generation_path, stream_path, chat_path, non_post_method).",
+    ],
+    riskSignals: [
+      "Top candidate uses a streaming transport; URL matching is visible, but message contents are not inspected by probe mode.",
+      "Prepare/warmup candidates were observed; keep them out of generation matchers unless completion evidence proves otherwise.",
+    ],
+    nextChecks: [
+      "Verify whether the top candidate stays active until the visible answer is complete.",
+      "Send a longer prompt and confirm the same candidate remains the strongest signal.",
+      "Switch away from the tab during generation and confirm the candidate is still observed.",
+      "Check cancellation/failure behavior before sending completion notifications.",
+    ],
+  });
+
+  const serialized = JSON.stringify(report.latestFlow.analysis);
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("conversation=secret"), false);
 });
 
 test("createTestNotificationMessage uses the expected type", () => {

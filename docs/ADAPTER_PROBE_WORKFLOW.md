@@ -37,6 +37,7 @@ The copied report is intentionally small and adapter-focused.
 - `latestFlow.requestCandidates`: bounded, de-duplicated same-host request candidates retained for adapter design.
 - `latestFlow.likelyGenerationCandidates`: heuristic ranking of request candidates that look most like generation requests.
 - `latestFlow.adapterDraft`: a first-pass adapter draft with suggested host, site id, bridge matchers, rationale, and `manualChecks`.
+- `latestFlow.analysis`: adapter readiness summary with the top candidate, candidate summary lines, risk signals, and next manual checks.
 - `latestFlow.matchedRequests`: sanitized request metadata for matched generation candidates.
 - `latestFlow.ignoredRequests`: sanitized request metadata for ignored request candidates.
 - `latestFlow.events`: compact event timeline with sanitized request metadata only.
@@ -99,6 +100,8 @@ The visible Recent activity timeline stays small, but the copied diagnostics rep
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 
 Use `adapterDraft` as a handoff sketch, not as generated production code. It suggests bridge matchers from the strongest candidates and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
+
+Use `analysis` as the adapter readiness checklist for the captured report. It summarizes the strongest candidates, calls out risk signals such as streaming transports, prepare/warmup noise, or metadata-like paths, and lists the next real-browser checks needed before implementing a production adapter.
 
 Keep host permissions narrow. Do not broaden the manifest to all websites just to make adapter discovery easier.
 

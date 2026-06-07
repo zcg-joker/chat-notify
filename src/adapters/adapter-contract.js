@@ -16,6 +16,7 @@
     "getLatestAssistantSnapshot",
     "observePage",
     "normalizeLifecycleEvent",
+    "getLifecycleBridgeConfig",
   ]);
   const REQUIRED_ADAPTER_METADATA = Object.freeze({
     siteId: "string",

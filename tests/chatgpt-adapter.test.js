@@ -50,6 +50,18 @@ test("exposes ChatGPT adapter metadata", () => {
   assert.equal(adapter.canObserveLifecycle, true);
 });
 
+test("returns ChatGPT lifecycle bridge config", () => {
+  const adapter = createChatGptAdapter();
+  const config = adapter.getLifecycleBridgeConfig();
+
+  assert.deepEqual(config.hosts, ["chatgpt.com", "chat.openai.com"]);
+  assert.equal(config.siteId, "chatgpt");
+  assert.equal(config.promptExtractor, "chatgpt");
+  assert.ok(
+    config.generationRequestMatchers.some((matcher) => matcher.pathname === "/backend-api/f/conversation")
+  );
+});
+
 test("satisfies adapter contract validation", () => {
   assert.equal(validateAdapter(createChatGptAdapter()), true);
 });

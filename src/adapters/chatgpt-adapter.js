@@ -171,6 +171,15 @@
       return normalized;
     }
 
+    function getLifecycleBridgeConfig() {
+      return {
+        siteId: "chatgpt",
+        hosts: Array.from(CHATGPT_HOSTS),
+        generationRequestMatchers: Array.from(GENERATION_URL_PATHS).map((pathname) => ({ pathname })),
+        promptExtractor: "chatgpt",
+      };
+    }
+
     return {
       siteId: "chatgpt",
       displayName: "ChatGPT",
@@ -184,6 +193,7 @@
       getLatestAssistantSnapshot,
       observePage,
       normalizeLifecycleEvent,
+      getLifecycleBridgeConfig,
     };
   }
 

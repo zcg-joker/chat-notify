@@ -1,11 +1,12 @@
 {
   "name": "chat-notify",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.0-alpha.1",
+  "private": false,
   "description": "A privacy-conscious browser extension that notifies when AI chat responses complete.",
   "scripts": {
     "test": "node --test",
-    "test:unit": "node --test tests/*.test.js"
+    "test:unit": "node --test tests/*.test.js",
+    "package": "node scripts/package-extension.js"
   },
   "engines": {
     "node": ">=20"

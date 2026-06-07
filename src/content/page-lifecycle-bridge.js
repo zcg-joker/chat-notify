@@ -213,7 +213,7 @@
     if (/^https?:\/\//i.test(trimmed) || /^\d+$/.test(trimmed)) {
       return true;
     }
-    if (/^(StreamGenerate|POST|GET|BardFrontendService)$/i.test(trimmed)) {
+    if (/^(StreamGenerate|POST|GET|BardFrontendService)$/i.test(trimmed) || /^wrb\./i.test(trimmed)) {
       return true;
     }
     return trimmed.includes("BardChatUi");
@@ -224,6 +224,27 @@
     if (!body || body.length > 200000) {
       return "";
     }
+    const candidates = [body];
+    try {
+      const params = new URLSearchParams(body);
+      const formRequest = params.get("f.req");
+      if (formRequest) {
+        candidates.unshift(formRequest);
+      }
+    } catch (_error) {
+      // Ignore bodies that are not form-encoded.
+    }
+
+    for (const candidateBody of candidates) {
+      const excerpt = extractGeminiPromptExcerptFromJson(candidateBody);
+      if (excerpt) {
+        return excerpt;
+      }
+    }
+    return "";
+  }
+
+  function extractGeminiPromptExcerptFromJson(body) {
     try {
       const parsed = JSON.parse(body);
       const strings = [];
@@ -255,17 +276,8 @@
     );
   }
 
-  window.fetch = async function chatNotifyFetch(input, init) {
-    const normalizedUrl = getNormalizedUrl(input);
-    if (!normalizedUrl) {
-      const rawUrl = getInputUrl(input);
-      if (rawUrl && String(rawUrl).includes("conversation")) {
-        log("debug", "fetch ignored by lifecycle bridge", { url: String(rawUrl) });
-      }
-      return originalFetch.apply(this, arguments);
-    }
-
-    const lifecycleId = `fetch:${Date.now()}:${++sequence}`;
+  function createLifecycleTracker(type, input, init, normalizedUrl) {
+    const lifecycleId = `${type}:${Date.now()}:${++sequence}`;
     const meta = getRequestMeta(input, init, normalizedUrl);
     let hasTerminalEvent = false;
 
@@ -285,24 +297,123 @@
       promptExcerpt: meta.promptExcerpt || "",
     });
 
+    return {
+      lifecycleId,
+      hasTerminalEvent: () => hasTerminalEvent,
+      postTerminalEvent,
+    };
+  }
+
+  function installXMLHttpRequestObserver() {
+    if (typeof window.XMLHttpRequest !== "function") {
+      return;
+    }
+
+    const prototype = window.XMLHttpRequest.prototype;
+    const originalOpen = prototype.open;
+    const originalSend = prototype.send;
+    if (typeof originalOpen !== "function" || typeof originalSend !== "function") {
+      return;
+    }
+
+    prototype.open = function chatNotifyXhrOpen(method, url) {
+      this.__chatNotifyRequestMethod = method;
+      this.__chatNotifyRequestUrl = url;
+      return originalOpen.apply(this, arguments);
+    };
+
+    prototype.send = function chatNotifyXhrSend(body) {
+      const input = {
+        url: getInputUrl(this.__chatNotifyRequestUrl) || String(this.__chatNotifyRequestUrl || ""),
+        method: this.__chatNotifyRequestMethod,
+      };
+      const init = {
+        method: this.__chatNotifyRequestMethod,
+        body,
+      };
+      const normalizedUrl = getNormalizedUrl(input);
+      if (!normalizedUrl) {
+        return originalSend.apply(this, arguments);
+      }
+
+      const tracker = createLifecycleTracker("xhr", input, init, normalizedUrl);
+
+      const postCompletedOrFailed = () => {
+        if (tracker.hasTerminalEvent()) {
+          return;
+        }
+        const status = Number(this.status || 0);
+        const phase = status >= 200 && status < 400 ? "completed" : "failed";
+        log(phase === "completed" ? "info" : "warn", `lifecycle ${phase}: xhr loadend`, {
+          lifecycleId: tracker.lifecycleId,
+          status,
+        });
+        tracker.postTerminalEvent(phase);
+      };
+      const postCanceled = () => {
+        if (tracker.hasTerminalEvent()) {
+          return;
+        }
+        log("warn", "lifecycle canceled: xhr abort", { lifecycleId: tracker.lifecycleId });
+        tracker.postTerminalEvent("canceled");
+      };
+      const postFailed = () => {
+        if (tracker.hasTerminalEvent()) {
+          return;
+        }
+        log("warn", "lifecycle failed: xhr error", { lifecycleId: tracker.lifecycleId });
+        tracker.postTerminalEvent("failed");
+      };
+
+      this.addEventListener("loadend", postCompletedOrFailed);
+      this.addEventListener("abort", postCanceled);
+      this.addEventListener("error", postFailed);
+
+      try {
+        return originalSend.apply(this, arguments);
+      } catch (error) {
+        log("warn", "lifecycle failed: xhr send error", {
+          lifecycleId: tracker.lifecycleId,
+          errorName: error && error.name,
+        });
+        tracker.postTerminalEvent("failed");
+        throw error;
+      }
+    };
+  }
+
+  installXMLHttpRequestObserver();
+
+  window.fetch = async function chatNotifyFetch(input, init) {
+    const normalizedUrl = getNormalizedUrl(input);
+    if (!normalizedUrl) {
+      const rawUrl = getInputUrl(input);
+      if (rawUrl && String(rawUrl).includes("conversation")) {
+        log("debug", "fetch ignored by lifecycle bridge", { url: String(rawUrl) });
+      }
+      return originalFetch.apply(this, arguments);
+    }
+
+    const tracker = createLifecycleTracker("fetch", input, init, normalizedUrl);
+
     try {
       const response = await originalFetch.apply(this, arguments);
 
       if (!response.ok) {
-        log("warn", "lifecycle failed: non-ok response", { lifecycleId, status: response.status });
-        postTerminalEvent("failed");
+        log("warn", "lifecycle failed: non-ok response", { lifecycleId: tracker.lifecycleId, status: response.status });
+        tracker.postTerminalEvent("failed");
         return response;
       }
 
       if (!response.body || typeof ReadableStream === "undefined") {
-        log("info", "lifecycle completed: response has no stream", { lifecycleId });
-        postTerminalEvent("completed");
+        log("info", "lifecycle completed: response has no stream", { lifecycleId: tracker.lifecycleId });
+        tracker.postTerminalEvent("completed");
         return response;
       }
 
       if (typeof response.clone !== "function") {
-        log("warn", "lifecycle failed: response clone unavailable", { lifecycleId });
-        postTerminalEvent("failed");
+        log("warn", "lifecycle failed: response clone unavailable", { lifecycleId: tracker.lifecycleId });
+        tracker.postTerminalEvent("failed");
         return response;
       }
 
@@ -313,8 +424,8 @@
           : null;
 
         if (!reader) {
-          log("warn", "lifecycle failed: clone reader unavailable", { lifecycleId });
-          postTerminalEvent("failed");
+          log("warn", "lifecycle failed: clone reader unavailable", { lifecycleId: tracker.lifecycleId });
+          tracker.postTerminalEvent("failed");
           return response;
         }
 
@@ -323,29 +434,33 @@
             while (true) {
               const { done } = await reader.read();
               if (done) {
-                log("info", "lifecycle completed: stream drained", { lifecycleId });
-                postTerminalEvent("completed");
+                log("info", "lifecycle completed: stream drained", { lifecycleId: tracker.lifecycleId });
+                tracker.postTerminalEvent("completed");
                 return;
               }
             }
           } catch (error) {
             log("warn", "lifecycle terminal read error", {
-              lifecycleId,
+              lifecycleId: tracker.lifecycleId,
               errorName: error && error.name,
             });
-            postTerminalEvent(error && error.name === "AbortError" ? "canceled" : "failed");
+            tracker.postTerminalEvent(error && error.name === "AbortError" ? "canceled" : "failed");
           }
         })();
       } catch (_error) {
-        log("warn", "lifecycle failed: clone setup error", { lifecycleId });
-        postTerminalEvent("failed");
+        log("warn", "lifecycle failed: clone setup error", { lifecycleId: tracker.lifecycleId });
+        tracker.postTerminalEvent("failed");
       }
 
       return response;
     } catch (error) {
       const phase = error && error.name === "AbortError" ? "canceled" : "failed";
-      log("warn", "lifecycle terminal fetch error", { lifecycleId, phase, errorName: error && error.name });
-      postTerminalEvent(phase);
+      log("warn", "lifecycle terminal fetch error", {
+        lifecycleId: tracker.lifecycleId,
+        phase,
+        errorName: error && error.name,
+      });
+      tracker.postTerminalEvent(phase);
       throw error;
     }
   };

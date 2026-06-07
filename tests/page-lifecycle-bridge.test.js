@@ -12,6 +12,7 @@ function createBridgeWindow({
   location = "https://chatgpt.com/c/test-chat",
   fetchImpl = async () => new Response(null, { status: 204 }),
   ResponseCtor = Response,
+  XMLHttpRequestCtor,
   consoleApi,
 } = {}) {
   const messages = [];
@@ -34,12 +35,17 @@ function createBridgeWindow({
   const context = {
     window,
     URL,
+    URLSearchParams,
     Response: ResponseCtor,
     ReadableStream,
     DOMException,
     Date,
     Promise,
   };
+  if (XMLHttpRequestCtor) {
+    window.XMLHttpRequest = XMLHttpRequestCtor;
+    context.XMLHttpRequest = XMLHttpRequestCtor;
+  }
   if (consoleApi) {
     context.console = consoleApi;
   }
@@ -53,6 +59,63 @@ function createBridgeWindow({
     details() {
       return messages.map((entry) => entry.message.detail);
     },
+  };
+}
+
+function createFakeXMLHttpRequestClass() {
+  return class FakeXMLHttpRequest {
+    constructor() {
+      this._listeners = new Map();
+      this.readyState = 0;
+      this.status = 200;
+    }
+
+    open(method, url) {
+      this.method = method;
+      this.url = url;
+    }
+
+    addEventListener(type, listener) {
+      this._listeners.set(type, listener);
+    }
+
+    send(body) {
+      this.body = body;
+      const listener = this._listeners.get("loadend");
+      if (listener) {
+        listener.call(this);
+      }
+    }
+  };
+}
+
+function createManualFakeXMLHttpRequestClass() {
+  return class ManualFakeXMLHttpRequest {
+    constructor() {
+      this._listeners = new Map();
+      this.status = 200;
+    }
+
+    open(method, url) {
+      this.method = method;
+      this.url = url;
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this._listeners.get(type) || [];
+      listeners.push(listener);
+      this._listeners.set(type, listeners);
+    }
+
+    send(body) {
+      this.body = body;
+    }
+
+    dispatch(type) {
+      for (const listener of this._listeners.get(type) || []) {
+        listener.call(this);
+      }
+    }
   };
 }
 
@@ -427,6 +490,118 @@ test("matches configured Gemini generation requests", async () => {
   assert.equal(bridge.details()[0].phase, "started");
   assert.equal(bridge.details()[0].promptExcerpt, "Explain Kubernetes simply");
   assert.equal(bridge.details().at(-1).phase, "completed");
+});
+
+test("observes configured Gemini generation XMLHttpRequests", () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    XMLHttpRequestCtor: createFakeXMLHttpRequestClass(),
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "BardChatUi/data/batchexecute" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+
+  const xhr = new bridge.window.XMLHttpRequest();
+  xhr.open("POST", "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=wrb.fr");
+  xhr.send(JSON.stringify([[[["Explain Kubernetes simply"]]]]));
+
+  assert.equal(bridge.details()[0].siteId, "gemini");
+  assert.equal(bridge.details()[0].phase, "started");
+  assert.equal(bridge.details()[0].method, "POST");
+  assert.equal(bridge.details()[0].promptExcerpt, "Explain Kubernetes simply");
+  assert.equal(bridge.details().at(-1).phase, "completed");
+});
+
+test("extracts Gemini prompt excerpts from form-encoded batch XHR bodies", () => {
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    XMLHttpRequestCtor: createFakeXMLHttpRequestClass(),
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "BardChatUi/data/batchexecute" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+
+  const body = new URLSearchParams({
+    "f.req": JSON.stringify(["wrb.fr", "StreamGenerate", [[["Explain Kubernetes simply"]]]]),
+    at: "sensitive-token",
+  }).toString();
+
+  const xhr = new bridge.window.XMLHttpRequest();
+  xhr.open("POST", "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=wrb.fr");
+  xhr.send(body);
+
+  assert.equal(bridge.details()[0].promptExcerpt, "Explain Kubernetes simply");
+  assert.equal(Object.hasOwn(bridge.details()[0], "body"), false);
+});
+
+test("logs only one terminal XHR lifecycle phase", () => {
+  const logs = [];
+  const bridge = createBridgeWindow({
+    location: "https://gemini.google.com/app",
+    XMLHttpRequestCtor: createManualFakeXMLHttpRequestClass(),
+    consoleApi: {
+      info(prefix, message, detail) {
+        logs.push({ level: "info", prefix, message, detail });
+      },
+      warn(prefix, message, detail) {
+        logs.push({ level: "warn", prefix, message, detail });
+      },
+    },
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "gemini",
+        hosts: ["gemini.google.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "BardChatUi/data/batchexecute" }],
+        promptExtractor: "gemini",
+      },
+    },
+  });
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+      debugLogs: true,
+    },
+  });
+
+  const xhr = new bridge.window.XMLHttpRequest();
+  xhr.open("POST", "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=wrb.fr");
+  xhr.send(JSON.stringify([[[["Explain Kubernetes simply"]]]]));
+  xhr.dispatch("abort");
+  xhr.dispatch("loadend");
+
+  const terminalLifecycleLogs = logs.filter((entry) => /^lifecycle (completed|failed|canceled): xhr/.test(entry.message));
+  assert.deepEqual(terminalLifecycleLogs.map((entry) => entry.message), ["lifecycle canceled: xhr abort"]);
+  assert.deepEqual(
+    bridge.details().map((detail) => detail.phase),
+    ["started", "canceled"]
+  );
 });
 
 test("omits Gemini prompt excerpt when request body is malformed JSON", async () => {

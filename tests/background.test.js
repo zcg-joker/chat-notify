@@ -311,6 +311,20 @@ test("request probe candidates stay available beyond the recent event timeline",
       headers: { authorization: "Bearer token" },
     }));
   }
+  await service.handleMessage(createDiagnosticEventMessage({
+    flowId: "probe:example.com:1780761600000",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    eventType: "request_probe_ignored",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/prepare?token=secret",
+    matched: false,
+    reason: "path_not_matched",
+    body: "private body",
+    headers: { authorization: "Bearer token" },
+  }));
 
   const flow = local.data.popupStatus.diagnostics.latestFlow;
   assert.equal(flow.events.length, 8);
@@ -327,7 +341,16 @@ test("request probe candidates stay available beyond the recent event timeline",
     "/api/candidate-10",
     "/api/candidate-11",
     "/api/candidate-12",
+    "/api/prepare",
   ]);
+  assert.deepEqual(flow.requestCandidates.at(-1), {
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/prepare",
+    matched: false,
+    reason: "path_not_matched",
+  });
   const serialized = JSON.stringify(flow);
   assert.equal(serialized.includes("token=secret"), false);
   assert.equal(serialized.includes("private body"), false);

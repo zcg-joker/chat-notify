@@ -138,7 +138,7 @@
 
   function appendRequestCandidate(existingCandidates, request) {
     const sanitized = sanitizeDiagnosticRequest(request);
-    if (!sanitized || !sanitized.matched) {
+    if (!sanitized) {
       return Array.isArray(existingCandidates) ? existingCandidates.slice(-MAX_REQUEST_CANDIDATES) : [];
     }
     const candidates = Array.isArray(existingCandidates) ? existingCandidates.slice() : [];

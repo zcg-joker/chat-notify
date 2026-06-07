@@ -214,6 +214,7 @@
       return {
         sampleCount: 0,
         stableCandidates: [],
+        stableIgnoredCandidates: [],
         sampleSummaries: [],
         scenarioCoverage: createScenarioCoverage(sanitizedSamples),
       };
@@ -223,9 +224,6 @@
     sanitizedSamples.forEach((sample) => {
       const keysInSample = new Set();
       sample.requestCandidates.forEach((candidate) => {
-        if (!candidate.matched) {
-          return;
-        }
         const key = requestCandidateKey(candidate);
         if (keysInSample.has(key)) {
           return;
@@ -241,7 +239,7 @@
     });
 
     const stableCandidates = Array.from(candidateByKey.values())
-      .filter((entry) => entry.sampleCount >= 2)
+      .filter((entry) => entry.sampleCount >= 2 && entry.candidate.matched)
       .map((entry) => {
         const scored = scoreGenerationCandidate(entry.candidate);
         return Object.assign({}, scored, {
@@ -260,10 +258,28 @@
         return left.path.localeCompare(right.path);
       })
       .slice(0, 5);
+    const stableIgnoredCandidates = Array.from(candidateByKey.values())
+      .filter((entry) => entry.sampleCount >= 2 && !entry.candidate.matched)
+      .map((entry) => {
+        const scored = scoreGenerationCandidate(entry.candidate);
+        return Object.assign({}, scored, {
+          sampleCount: entry.sampleCount,
+          stability: `${entry.sampleCount}/${sampleCount}`,
+          scenarios: entry.scenarios,
+        });
+      })
+      .sort((left, right) => {
+        if (right.sampleCount !== left.sampleCount) {
+          return right.sampleCount - left.sampleCount;
+        }
+        return left.path.localeCompare(right.path);
+      })
+      .slice(0, 5);
 
     return {
       sampleCount,
       stableCandidates,
+      stableIgnoredCandidates,
       sampleSummaries: sanitizedSamples.map((sample) => ({
         flowId: sample.flowId,
         scenario: sample.scenario,

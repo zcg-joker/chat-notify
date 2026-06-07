@@ -1,8 +1,23 @@
 (function installChatNotifyLifecycleBridge() {
+  const LOG_PREFIX = "[Chat Notify]";
+
+  function log(level, message, detail) {
+    if (typeof console === "undefined" || typeof console[level] !== "function") {
+      return;
+    }
+    if (detail === undefined) {
+      console[level](LOG_PREFIX, message);
+      return;
+    }
+    console[level](LOG_PREFIX, message, detail);
+  }
+
   if (window.__chatNotifyLifecycleBridgeInstalled) {
+    log("debug", "page lifecycle bridge already installed");
     return;
   }
   window.__chatNotifyLifecycleBridgeInstalled = true;
+  log("info", "page lifecycle bridge installed");
 
   const originalFetch = window.fetch;
   let sequence = 0;
@@ -67,6 +82,10 @@
   window.fetch = async function chatNotifyFetch(input, init) {
     const normalizedUrl = getNormalizedUrl(input);
     if (!normalizedUrl) {
+      const rawUrl = getInputUrl(input);
+      if (rawUrl && String(rawUrl).includes("conversation")) {
+        log("debug", "fetch ignored by lifecycle bridge", { url: String(rawUrl) });
+      }
       return originalFetch.apply(this, arguments);
     }
 
@@ -83,21 +102,25 @@
     }
 
     postLifecycleEvent(Object.assign({ lifecycleId, phase: "started" }, meta));
+    log("info", "lifecycle started", { lifecycleId, url: meta.url, method: meta.method });
 
     try {
       const response = await originalFetch.apply(this, arguments);
 
       if (!response.ok) {
+        log("warn", "lifecycle failed: non-ok response", { lifecycleId, status: response.status });
         postTerminalEvent("failed");
         return response;
       }
 
       if (!response.body || typeof ReadableStream === "undefined") {
+        log("info", "lifecycle completed: response has no stream", { lifecycleId });
         postTerminalEvent("completed");
         return response;
       }
 
       if (typeof response.clone !== "function") {
+        log("warn", "lifecycle failed: response clone unavailable", { lifecycleId });
         postTerminalEvent("failed");
         return response;
       }
@@ -109,6 +132,7 @@
           : null;
 
         if (!reader) {
+          log("warn", "lifecycle failed: clone reader unavailable", { lifecycleId });
           postTerminalEvent("failed");
           return response;
         }
@@ -118,21 +142,28 @@
             while (true) {
               const { done } = await reader.read();
               if (done) {
+                log("info", "lifecycle completed: stream drained", { lifecycleId });
                 postTerminalEvent("completed");
                 return;
               }
             }
           } catch (error) {
+            log("warn", "lifecycle terminal read error", {
+              lifecycleId,
+              errorName: error && error.name,
+            });
             postTerminalEvent(error && error.name === "AbortError" ? "canceled" : "failed");
           }
         })();
       } catch (_error) {
+        log("warn", "lifecycle failed: clone setup error", { lifecycleId });
         postTerminalEvent("failed");
       }
 
       return response;
     } catch (error) {
       const phase = error && error.name === "AbortError" ? "canceled" : "failed";
+      log("warn", "lifecycle terminal fetch error", { lifecycleId, phase, errorName: error && error.name });
       postTerminalEvent(phase);
       throw error;
     }

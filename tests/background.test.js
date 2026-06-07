@@ -33,6 +33,7 @@ test("creates completion notification with prompt excerpt", async () => {
 
   assert.equal(result.ok, true);
   assert.match(created[0].id, /^chat-notify:chatgpt:conversation:a:3:/);
+  assert.equal(created[0].options.iconUrl, "assets/icon-128.png");
   assert.equal(created[0].options.title, "ChatGPT response complete");
   assert.equal(created[0].options.message, "\"Summarize this paper...\" is ready");
 });
@@ -115,6 +116,7 @@ test("creates test notification", async () => {
 
   assert.equal(result.ok, true);
   assert.match(result.notificationId, /^chat-notify:test:/);
+  assert.equal(created[0].options.iconUrl, "assets/icon-128.png");
   assert.equal(created[0].options.title, "Chat Notify test");
   assert.equal(created[0].options.message, "Notifications are working");
 });

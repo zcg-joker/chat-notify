@@ -19,6 +19,19 @@
   }
 })(globalThis, function buildBackground(messages) {
   const { MESSAGE_TYPES } = messages;
+  const LOG_PREFIX = "[Chat Notify]";
+  const NOTIFICATION_ICON = "assets/icon-128.png";
+
+  function log(level, message, detail) {
+    if (typeof console === "undefined" || typeof console[level] !== "function") {
+      return;
+    }
+    if (detail === undefined) {
+      console[level](LOG_PREFIX, message);
+      return;
+    }
+    console[level](LOG_PREFIX, message, detail);
+  }
 
   function sanitizeNotificationIdPart(value) {
     return String(value || "unknown").replace(/[^a-zA-Z0-9:_-]/g, "_");
@@ -29,7 +42,7 @@
     const promptExcerpt = payload.promptExcerpt || "";
     return {
       type: "basic",
-      iconUrl: "assets/icon.svg",
+      iconUrl: NOTIFICATION_ICON,
       title: `${displayName} response complete`,
       message: promptExcerpt ? `"${promptExcerpt}" is ready` : "Your response is ready",
       priority: 1,
@@ -80,26 +93,31 @@
     }
 
     async function handleMessage(message, sender = {}) {
+      log("debug", "background message received", { type: message && message.type, senderTabId: sender.tab && sender.tab.id });
       if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
         const id = `chat-notify:test:${now()}`;
         const notificationResult = await notify(id, {
           type: "basic",
-          iconUrl: "assets/icon.svg",
+          iconUrl: NOTIFICATION_ICON,
           title: "Chat Notify test",
           message: "Notifications are working",
           priority: 1,
         });
         if (!notificationResult.ok) {
+          log("warn", "test notification failed", notificationResult.error);
           return { ok: false, error: notificationResult.error, notificationId: id };
         }
+        log("info", "test notification created", id);
         return { ok: true, notificationId: id };
       }
 
       if (!message || message.type !== MESSAGE_TYPES.AI_RESPONSE_COMPLETED) {
+        log("debug", "background message ignored");
         return { ok: false, ignored: true };
       }
 
       if (!(await getEnabled())) {
+        log("info", "completion notification ignored because extension is disabled");
         return { ok: false, ignored: true, disabled: true };
       }
 
@@ -116,8 +134,14 @@
 
       const notificationResult = await notify(id, buildCompletionNotification(payload));
       if (!notificationResult.ok) {
+        log("warn", "completion notification failed", notificationResult.error);
         return { ok: false, error: notificationResult.error, notificationId: id };
       }
+      log("info", "completion notification created", {
+        notificationId: id,
+        siteId: payload.siteId,
+        sessionKey: payload.sessionKey,
+      });
       return { ok: true, notificationId: id };
     }
 

@@ -49,6 +49,10 @@ function runPopup({
     "notification-status": createElement("notification-status"),
     "completion-status": createElement("completion-status"),
     "notification-detail": createElement("notification-detail"),
+    "activity-summary": createElement("activity-summary"),
+    "activity-site": createElement("activity-site"),
+    "activity-prompt": createElement("activity-prompt"),
+    "activity-timeline": createElement("activity-timeline"),
   };
   const storageWrites = [];
   const runtimeMessages = [];
@@ -121,9 +125,15 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /id="notification-status"/);
   assert.match(html, /id="notification-detail"/);
   assert.match(html, /id="completion-status"/);
+  assert.match(html, /aria-label="Recent activity"/);
+  assert.match(html, /id="activity-summary"/);
+  assert.match(html, /id="activity-site"/);
+  assert.match(html, /id="activity-prompt"/);
+  assert.match(html, /id="activity-timeline"/);
   assert.match(html, /src="\.\.\/shared\/messages\.js"/);
   assert.match(html, /src="\.\/popup\.js"/);
   assert.match(css, /\.popup/);
+  assert.match(css, /\.activity-timeline/);
 });
 
 test("popup initializes stored toggle states and supported site status", () => {
@@ -136,6 +146,14 @@ test("popup initializes stored toggle states and supported site status", () => {
   assert.equal(popup.elements["enabled-toggle"].checked, false);
   assert.equal(popup.elements["debug-logs-toggle"].checked, true);
   assert.equal(popup.elements["extension-status"].textContent, "Disabled");
+  assert.equal(popup.elements["site-status"].textContent, "Current page is supported");
+});
+
+test("popup marks Gemini pages as supported", () => {
+  const popup = runPopup({
+    tabUrl: "https://gemini.google.com/app",
+  });
+
   assert.equal(popup.elements["site-status"].textContent, "Current page is supported");
 });
 
@@ -184,6 +202,84 @@ test("popup renders background status summaries for working notifications and se
   assert.equal(popup.elements["notification-status"].textContent, "Notifications working");
   assert.equal(popup.elements["notification-detail"].textContent, "");
   assert.equal(popup.elements["completion-status"].textContent, "Last notification sent");
+});
+
+test("popup renders no recent activity when diagnostics latest flow is empty", () => {
+  const popup = runPopup({
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: null,
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "No recent activity");
+  assert.equal(popup.elements["activity-site"].textContent, "");
+  assert.equal(popup.elements["activity-prompt"].textContent, "");
+  assert.equal(popup.elements["activity-timeline"].textContent, "");
+});
+
+test("popup renders Gemini recent activity timeline from diagnostics", () => {
+  const popup = runPopup({
+    tabUrl: "https://gemini.google.com/app",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "working", message: "", updatedAt: 1780761600000 },
+        lastCompletion: { state: "sent", siteId: "gemini", updatedAt: 1780761600000 },
+        diagnostics: {
+          latestFlow: {
+            siteId: "gemini",
+            displayName: "Gemini",
+            promptExcerpt: "summarize the launch notes",
+            events: [
+              { eventType: "send_captured", at: 1780761600000 },
+              { eventType: "lifecycle_started", at: 1780761601000 },
+              { eventType: "notification_sent", at: 1780761602000 },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Notification sent");
+  assert.equal(popup.elements["activity-site"].textContent, "Gemini");
+  assert.equal(popup.elements["activity-prompt"].textContent, "\"summarize the launch notes\"");
+  assert.equal(
+    popup.elements["activity-timeline"].textContent,
+    "Send captured -> Generation started -> Notification sent",
+  );
+});
+
+test("popup renders unknown diagnostics event types with a neutral label", () => {
+  const popup = runPopup({
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: {
+            siteId: "gemini",
+            displayName: "Gemini",
+            events: [
+              { eventType: "new_backend_event", at: 1780761600000 },
+              { at: 1780761601000 },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["activity-summary"].textContent, "Unknown event");
+  assert.equal(popup.elements["activity-timeline"].textContent, "Unknown event -> Unknown event");
 });
 
 test("popup shows test notification failure response and detail", () => {

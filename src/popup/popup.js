@@ -7,6 +7,22 @@
   const notificationStatus = document.getElementById("notification-status");
   const notificationDetail = document.getElementById("notification-detail");
   const completionStatus = document.getElementById("completion-status");
+  const activitySummary = document.getElementById("activity-summary");
+  const activitySite = document.getElementById("activity-site");
+  const activityPrompt = document.getElementById("activity-prompt");
+  const activityTimeline = document.getElementById("activity-timeline");
+
+  const ACTIVITY_LABELS = {
+    send_captured: "Send captured",
+    lifecycle_started: "Generation started",
+    lifecycle_completed: "Generation completed",
+    lifecycle_failed: "Generation failed",
+    lifecycle_canceled: "Generation canceled",
+    notification_sent: "Notification sent",
+    notification_failed: "Notification failed",
+    notification_focus_succeeded: "Notification focused",
+    notification_focus_failed: "Focus failed",
+  };
 
   function shortError(value) {
     if (!value) {
@@ -45,10 +61,35 @@
     completionStatus.textContent = "No completions yet";
   }
 
+  function activityLabel(event) {
+    const eventType = event && (event.eventType || event.type);
+    return ACTIVITY_LABELS[eventType] || "Unknown event";
+  }
+
+  function renderDiagnostics(diagnostics) {
+    const flow = diagnostics && diagnostics.latestFlow;
+    const events = flow && Array.isArray(flow.events) ? flow.events : [];
+    const labels = events.map(activityLabel).filter(Boolean);
+
+    if (labels.length === 0) {
+      activitySummary.textContent = "No recent activity";
+      activitySite.textContent = "";
+      activityPrompt.textContent = "";
+      activityTimeline.textContent = "";
+      return;
+    }
+
+    activitySummary.textContent = labels[labels.length - 1];
+    activitySite.textContent = flow.displayName || flow.siteId || "";
+    activityPrompt.textContent = flow.promptExcerpt ? `"${flow.promptExcerpt}"` : "";
+    activityTimeline.textContent = labels.join(" -> ");
+  }
+
   function renderPopupStatus(response) {
     const status = response && (response.popupStatus || response.status);
     renderNotificationHealth(status && status.notificationHealth);
     renderLastCompletion(status && status.lastCompletion);
+    renderDiagnostics(status && status.diagnostics);
   }
 
   function renderExtensionStatus() {
@@ -69,7 +110,11 @@
       url = null;
     }
 
-    const supported = url && (url.hostname === "chatgpt.com" || url.hostname === "chat.openai.com");
+    const supported =
+      url &&
+      (url.hostname === "chatgpt.com" ||
+        url.hostname === "chat.openai.com" ||
+        url.hostname === "gemini.google.com");
     siteStatus.textContent = supported ? "Current page is supported" : "Current page is not supported";
   });
 

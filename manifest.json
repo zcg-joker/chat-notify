@@ -3,7 +3,7 @@
   "name": "Chat Notify",
   "version": "0.2.0",
   "description": "Notify when ChatGPT finishes responding.",
-  "permissions": ["notifications", "storage", "tabs"],
+  "permissions": ["activeTab", "notifications", "scripting", "storage", "tabs"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*"
@@ -38,6 +38,7 @@
         "src/adapters/adapter-contract.js",
         "src/adapters/chatgpt-adapter.js",
         "src/adapters/gemini-adapter.js",
+        "src/content/page-probe-adapter.js",
         "src/core/monitor-controller.js",
         "src/content/content-script.js"
       ],

@@ -37,6 +37,7 @@ function runPopup({
     },
   },
   testNotificationResponse = { ok: true, notificationId: "test-id" },
+  startProbeResponse = { ok: true, probeStarted: true, host: "example.com" },
   runtimeLastError = null,
   clipboardWriteText,
 } = {}) {
@@ -56,6 +57,8 @@ function runPopup({
     "activity-timeline": createElement("activity-timeline"),
     "copy-diagnostics": createElement("copy-diagnostics"),
     "copy-diagnostics-status": createElement("copy-diagnostics-status"),
+    "start-page-probe": createElement("start-page-probe"),
+    "start-page-probe-status": createElement("start-page-probe-status"),
   };
   const storageWrites = [];
   const runtimeMessages = [];
@@ -78,7 +81,7 @@ function runPopup({
       },
       tabs: {
         query(_query, callback) {
-          callback([{ url: tabUrl }]);
+          callback([{ id: 11, url: tabUrl }]);
         },
       },
       runtime: {
@@ -91,6 +94,10 @@ function runPopup({
           }
           if (message.type === "TEST_NOTIFICATION" && callback) {
             callback(testNotificationResponse);
+            return;
+          }
+          if (message.type === "START_PAGE_PROBE" && callback) {
+            callback(startProbeResponse);
           }
         },
       },
@@ -99,6 +106,10 @@ function runPopup({
       MESSAGE_TYPES: {
         GET_POPUP_STATUS: "GET_POPUP_STATUS",
         TEST_NOTIFICATION: "TEST_NOTIFICATION",
+        START_PAGE_PROBE: "START_PAGE_PROBE",
+      },
+      createStartPageProbeMessage(input) {
+        return { type: "START_PAGE_PROBE", payload: input };
       },
       createProbeReport(input) {
         return {
@@ -150,6 +161,8 @@ test("popup assets exist and reference expected scripts", () => {
   assert.match(html, /id="activity-timeline"/);
   assert.match(html, /id="copy-diagnostics"/);
   assert.match(html, /id="copy-diagnostics-status"/);
+  assert.match(html, /id="start-page-probe"/);
+  assert.match(html, /id="start-page-probe-status"/);
   assert.match(html, /src="\.\.\/shared\/messages\.js"/);
   assert.match(html, /src="\.\/popup\.js"/);
   assert.match(css, /\.popup/);
@@ -167,6 +180,7 @@ test("popup initializes stored toggle states and supported site status", () => {
   assert.equal(popup.elements["debug-logs-toggle"].checked, true);
   assert.equal(popup.elements["extension-status"].textContent, "Disabled");
   assert.equal(popup.elements["site-status"].textContent, "Current page is supported");
+  assert.equal(popup.elements["start-page-probe"].disabled, true);
 });
 
 test("popup marks Gemini pages as supported", () => {
@@ -193,6 +207,35 @@ test("popup stores toggle changes and sends test notification message", () => {
   assert.equal(popup.runtimeMessages.length, 2);
   assert.equal(popup.runtimeMessages[0].type, "GET_POPUP_STATUS");
   assert.equal(popup.runtimeMessages[1].type, "TEST_NOTIFICATION");
+});
+
+test("popup can request a page probe for the current unsupported host", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat?token=secret",
+  });
+
+  popup.elements["start-page-probe"].dispatch("click");
+
+  assert.equal(popup.elements["site-status"].textContent, "Current page is not supported");
+  assert.equal(popup.elements["start-page-probe"].disabled, false);
+  assert.equal(popup.runtimeMessages.at(-1).type, "START_PAGE_PROBE");
+  assert.deepEqual(JSON.parse(JSON.stringify(popup.runtimeMessages.at(-1).payload)), {
+    tabId: 11,
+    host: "example.com",
+  });
+  assert.equal(popup.elements["start-page-probe-status"].textContent, "Probe started for example.com");
+  assert.equal(JSON.stringify(popup.runtimeMessages).includes("token=secret"), false);
+});
+
+test("popup reports page probe start failures", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat",
+    startProbeResponse: { ok: false, error: "Cannot access tab" },
+  });
+
+  popup.elements["start-page-probe"].dispatch("click");
+
+  assert.equal(popup.elements["start-page-probe-status"].textContent, "Cannot access tab");
 });
 
 test("popup updates extension status when enabled toggle changes", () => {

@@ -13,7 +13,7 @@ test("manifest uses MV3 and minimal permissions", () => {
   const manifest = readManifest();
 
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions.sort(), ["notifications", "storage", "tabs"].sort());
+  assert.deepEqual(manifest.permissions.sort(), ["activeTab", "notifications", "scripting", "storage", "tabs"].sort());
   assert.deepEqual(manifest.host_permissions.sort(), [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
@@ -35,9 +35,19 @@ test("manifest declares content scripts in dependency order", () => {
     "src/adapters/adapter-contract.js",
     "src/adapters/chatgpt-adapter.js",
     "src/adapters/gemini-adapter.js",
+    "src/content/page-probe-adapter.js",
     "src/core/monitor-controller.js",
     "src/content/content-script.js",
   ]);
+});
+
+test("manifest keeps packaged content scripts reusable for page probe injection", () => {
+  const manifest = readManifest();
+  const scripts = manifest.content_scripts[0].js;
+
+  assert.ok(scripts.includes("src/content/content-script.js"));
+  assert.ok(scripts.includes("src/content/page-probe-adapter.js"));
+  assert.ok(scripts.indexOf("src/content/page-probe-adapter.js") < scripts.indexOf("src/content/content-script.js"));
 });
 
 test("manifest supports Gemini content script loading", () => {

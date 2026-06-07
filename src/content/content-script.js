@@ -27,6 +27,9 @@
   if (typeof api.createGeminiAdapter === "function") {
     adapters.push(api.createGeminiAdapter());
   }
+  if (typeof api.createPageProbeAdapter === "function") {
+    adapters.push(api.createPageProbeAdapter());
+  }
   const adapter = adapters.find((candidate) => candidate.matchesLocation(window.location));
 
   if (!adapter) {
@@ -39,7 +42,8 @@
   let observersInstalled = false;
   let flowCounter = 0;
   let currentPendingFlowId = "";
-  let probeDiagnosticsActive = false;
+  const isProbeOnlyAdapter = adapter.completionStrategy === "probe_only";
+  let probeDiagnosticsActive = isProbeOnlyAdapter;
   const flowIdByLifecycleId = new Map();
   const flowIdBySessionKey = new Map();
 
@@ -51,6 +55,9 @@
   };
 
   function createFlowId() {
+    if (isProbeOnlyAdapter) {
+      return `probe:${window.location.hostname}:${Date.now()}`;
+    }
     flowCounter += 1;
     return `${adapter.siteId}:${Date.now()}:${flowCounter}`;
   }
@@ -192,6 +199,10 @@
     onCompleted: sendCompletion,
   });
 
+  if (isProbeOnlyAdapter) {
+    currentPendingFlowId = createFlowId();
+  }
+
   function handlePossibleSend(event) {
     if (!enabled) {
       return;
@@ -255,6 +266,9 @@
     }
 
     const normalized = adapter.normalizeLifecycleEvent(data.detail);
+    if (isProbeOnlyAdapter) {
+      return;
+    }
     if (normalized) {
       const diagnosticEventType = diagnosticTypeByLifecycleType[normalized.type];
       const flowId = resolveLifecycleFlowId(normalized);

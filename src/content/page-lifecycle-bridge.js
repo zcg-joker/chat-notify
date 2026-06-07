@@ -25,7 +25,11 @@
     if (!config || typeof config !== "object" || typeof config.siteId !== "string") {
       return null;
     }
-    if (config.promptExtractor !== "chatgpt" && config.promptExtractor !== "gemini") {
+    if (
+      config.promptExtractor !== "chatgpt" &&
+      config.promptExtractor !== "gemini" &&
+      config.promptExtractor !== "none"
+    ) {
       return null;
     }
     const hosts = Array.isArray(config.hosts) ? config.hosts.filter((host) => typeof host === "string") : [];
@@ -43,6 +47,7 @@
         pathnameIncludes: typeof matcher.pathnameIncludes === "string" ? matcher.pathnameIncludes : "",
       })),
       promptExtractor: config.promptExtractor,
+      probeOnly: Boolean(config.probeOnly),
     };
   }
 
@@ -140,7 +145,7 @@
         host: parsed.hostname,
         path: parsed.pathname,
         matched: true,
-        reason: "matched_generation_request",
+        reason: bridgeConfig.probeOnly ? "probe_observed_request" : "matched_generation_request",
         normalizedUrl: `${parsed.origin}${parsed.pathname}`,
       };
     } catch (_error) {
@@ -303,6 +308,9 @@
     if (!bridgeConfig) {
       return "";
     }
+    if (bridgeConfig.promptExtractor === "none") {
+      return "";
+    }
     if (bridgeConfig.promptExtractor === "gemini") {
       return extractGeminiPromptExcerpt(input, init);
     }
@@ -376,6 +384,9 @@
       };
       const inspected = inspectRequest(input);
       postRequestProbe("xhr", input, init, inspected);
+      if (bridgeConfig && bridgeConfig.probeOnly) {
+        return originalSend.apply(this, arguments);
+      }
       const normalizedUrl = inspected && inspected.matched ? inspected.normalizedUrl : "";
       if (!normalizedUrl) {
         return originalSend.apply(this, arguments);
@@ -432,6 +443,9 @@
   window.fetch = async function chatNotifyFetch(input, init) {
     const inspected = inspectRequest(input);
     postRequestProbe("fetch", input, init, inspected);
+    if (bridgeConfig && bridgeConfig.probeOnly) {
+      return originalFetch.apply(this, arguments);
+    }
     const normalizedUrl = inspected && inspected.matched ? inspected.normalizedUrl : "";
     if (!normalizedUrl) {
       const rawUrl = getInputUrl(input);

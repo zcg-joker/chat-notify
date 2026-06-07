@@ -13,8 +13,10 @@
   const activityTimeline = document.getElementById("activity-timeline");
   const copyDiagnosticsButton = document.getElementById("copy-diagnostics");
   const copyDiagnosticsStatus = document.getElementById("copy-diagnostics-status");
+  const startPageProbeButton = document.getElementById("start-page-probe");
+  const startPageProbeStatus = document.getElementById("start-page-probe-status");
   let latestPopupStatus = null;
-  let latestPageInfo = { supported: false, host: "" };
+  let latestPageInfo = { supported: false, host: "", tabId: null };
   let latestSettings = { enabled: true, debugLogs: false };
 
   const ACTIVITY_LABELS = {
@@ -149,8 +151,10 @@
     latestPageInfo = {
       supported: Boolean(supported),
       host: url && url.hostname ? url.hostname : "",
+      tabId: tabs[0] && Number.isFinite(tabs[0].id) ? tabs[0].id : null,
     };
     siteStatus.textContent = supported ? "Current page is supported" : "Current page is not supported";
+    startPageProbeButton.disabled = !url || Boolean(supported);
   });
 
   enabledToggle.addEventListener("change", () => {
@@ -183,6 +187,24 @@
         return;
       }
       renderNotificationHealth({ state: "failed", message: response && response.error });
+    });
+  });
+
+  startPageProbeButton.addEventListener("click", () => {
+    const message = ChatNotify.createStartPageProbeMessage({
+      tabId: latestPageInfo.tabId,
+      host: latestPageInfo.host,
+    });
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        startPageProbeStatus.textContent = shortError(chrome.runtime.lastError.message);
+        return;
+      }
+      if (response && response.ok) {
+        startPageProbeStatus.textContent = `Probe started for ${response.host || latestPageInfo.host}`;
+        return;
+      }
+      startPageProbeStatus.textContent = shortError((response && response.error) || "Probe failed");
     });
   });
 

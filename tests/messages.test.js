@@ -5,6 +5,7 @@ const {
   createDiagnosticEventMessage,
   createProbeReport,
   createResponseCompletedMessage,
+  createStartPageProbeMessage,
   createTestNotificationMessage,
 } = require("../src/shared/messages.js");
 
@@ -281,5 +282,19 @@ test("createTestNotificationMessage uses the expected type", () => {
   assert.deepEqual(createTestNotificationMessage(), {
     type: MESSAGE_TYPES.TEST_NOTIFICATION,
     payload: {},
+  });
+});
+
+test("createStartPageProbeMessage creates a sanitized active tab probe request", () => {
+  assert.deepEqual(createStartPageProbeMessage({
+    tabId: 42,
+    host: "Example.COM ",
+    url: "https://example.com/private?token=secret",
+  }), {
+    type: MESSAGE_TYPES.START_PAGE_PROBE,
+    payload: {
+      tabId: 42,
+      host: "example.com",
+    },
   });
 });

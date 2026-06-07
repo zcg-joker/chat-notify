@@ -23,6 +23,19 @@
   const NOTIFICATION_ICON_PATH = "assets/icon-128.png";
   const POPUP_STATUS_KEY = "popupStatus";
   const NOTIFICATION_TARGETS_KEY = "notificationTargets";
+  const PAGE_PROBE_CONTENT_FILES = Object.freeze([
+    "src/shared/constants.js",
+    "src/shared/messages.js",
+    "src/core/prompt-excerpt.js",
+    "src/core/state-machine.js",
+    "src/core/session-tracker.js",
+    "src/core/dom-watch.js",
+    "src/adapters/adapter-contract.js",
+    "src/adapters/chatgpt-adapter.js",
+    "src/adapters/gemini-adapter.js",
+    "src/content/page-probe-adapter.js",
+    "src/core/monitor-controller.js",
+  ]);
   const DEFAULT_POPUP_STATUS = Object.freeze({
     notificationHealth: Object.freeze({ state: "not_tested", message: "", updatedAt: null }),
     lastCompletion: Object.freeze({ state: "none", siteId: "", updatedAt: null }),
@@ -241,6 +254,70 @@
           resolve({ ok: false, error: error && error.message ? error.message : String(error) });
         }
       });
+    }
+
+    function executeScript(details) {
+      return new Promise((resolve) => {
+        if (!chromeApi.scripting || typeof chromeApi.scripting.executeScript !== "function") {
+          resolve({ ok: false, error: "scripting.executeScript unavailable" });
+          return;
+        }
+        try {
+          chromeApi.scripting.executeScript(details, () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              resolve({ ok: false, error: lastError.message || String(lastError) });
+              return;
+            }
+            resolve({ ok: true });
+          });
+        } catch (error) {
+          resolve({ ok: false, error: error && error.message ? error.message : String(error) });
+        }
+      });
+    }
+
+    function getSenderTabHost(sender) {
+      try {
+        return sender && sender.tab && sender.tab.url ? new URL(sender.tab.url).hostname.toLowerCase() : "";
+      } catch (_error) {
+        return "";
+      }
+    }
+
+    async function startPageProbe(payload = {}, sender = {}) {
+      const tabId = Number.isFinite(payload.tabId) ? payload.tabId : sender.tab && sender.tab.id;
+      const host = typeof payload.host === "string" ? payload.host.trim().toLowerCase() : "";
+      if (!isFiniteNumber(tabId) || !host) {
+        return { ok: false, error: "Probe requires an active tab and host" };
+      }
+      if (sender.tab && sender.tab.id !== tabId) {
+        return { ok: false, error: "Probe tab does not match active tab" };
+      }
+      if (getSenderTabHost(sender) !== host) {
+        return { ok: false, error: "Probe host does not match active tab" };
+      }
+
+      const injections = [
+        { target: { tabId }, files: PAGE_PROBE_CONTENT_FILES },
+        { target: { tabId }, files: ["src/content/page-lifecycle-bridge.js"], world: "MAIN" },
+        { target: { tabId }, files: ["src/content/content-script.js"] },
+      ];
+      for (const injection of injections) {
+        const result = await executeScript(injection);
+        if (!result.ok) {
+          return { ok: false, error: result.error || "Unable to inject page probe" };
+        }
+      }
+
+      await recordDiagnosticEvent({
+        flowId: `probe:${host}:${now()}`,
+        siteId: "page-probe",
+        displayName: "Page Probe",
+        eventType: "probe_started",
+        message: host,
+      });
+      return { ok: true, probeStarted: true, host };
     }
 
     async function getPopupStatus() {
@@ -483,6 +560,10 @@
       writeLog("debug", "background message received", { type: message && message.type, senderTabId: sender.tab && sender.tab.id });
       if (message && message.type === MESSAGE_TYPES.GET_POPUP_STATUS) {
         return { ok: true, popupStatus: await getPopupStatus() };
+      }
+
+      if (message && message.type === MESSAGE_TYPES.START_PAGE_PROBE) {
+        return startPageProbe(message.payload || {}, sender);
       }
 
       if (message && message.type === MESSAGE_TYPES.DIAGNOSTIC_EVENT) {

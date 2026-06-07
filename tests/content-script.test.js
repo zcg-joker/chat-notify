@@ -42,6 +42,7 @@ function createContentScriptContext({
   enabled = true,
   debugLogs = false,
   supported = true,
+  pageProbeSupported = false,
   location = "https://chatgpt.com/c/test",
   extraApi = {},
   consoleApi = console,
@@ -76,8 +77,25 @@ function createContentScriptContext({
       promptExtractor: "chatgpt",
     }),
   };
+  const pageProbeAdapter = {
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    canObserveLifecycle: true,
+    completionStrategy: "probe_only",
+    matchesLocation: () => pageProbeSupported,
+    isSendEvent: () => false,
+    normalizeLifecycleEvent: () => null,
+    getLifecycleBridgeConfig: () => ({
+      siteId: "page-probe",
+      hosts: [new URL(location).hostname],
+      generationRequestMatchers: [{ pathnameIncludes: "/" }],
+      promptExtractor: "none",
+      probeOnly: true,
+    }),
+  };
   const api = Object.assign({
     createChatGptAdapter: () => adapter,
+    createPageProbeAdapter: () => pageProbeAdapter,
     createMonitorController: (options) => {
       controllerOptions = options;
       return {
@@ -238,6 +256,87 @@ test("does not install listeners when disabled", () => {
   assert.equal(context.documentFixture.scripts.length, 0);
   assert.equal(context.documentFixture.listeners.size, 0);
   assert.equal(context.windowListeners.size, 0);
+});
+
+test("selects page probe adapter on unsupported active probe hosts", () => {
+  const context = createContentScriptContext({
+    supported: false,
+    pageProbeSupported: true,
+    location: "https://example.com/chat",
+  });
+
+  assert.equal(context.adapter.siteId, "page-probe");
+  assert.equal(context.documentFixture.scripts.length, 1);
+  context.documentFixture.scripts[0].onload();
+  assert.deepEqual(context.postedMessages[0].message, {
+    source: "chat-notify-content-script",
+    type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+    config: {
+      siteId: "page-probe",
+      hosts: ["example.com"],
+      generationRequestMatchers: [{ pathnameIncludes: "/" }],
+      promptExtractor: "none",
+      probeOnly: true,
+    },
+  });
+});
+
+test("page probe forwards matched request probes without notifying", () => {
+  const context = createContentScriptContext({
+    supported: false,
+    pageProbeSupported: true,
+    location: "https://example.com/chat",
+  });
+
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        eventType: "request_probe",
+        siteId: "page-probe",
+        requestKind: "fetch",
+        method: "POST",
+        host: "example.com",
+        path: "/api/chat",
+        matched: true,
+        reason: "probe_observed_request",
+      },
+    },
+  });
+  context.windowListeners.get("message")({
+    source: context.window,
+    data: {
+      source: "chat-notify-page-lifecycle-bridge",
+      detail: {
+        phase: "completed",
+        siteId: "page-probe",
+        requestKind: "fetch",
+        method: "POST",
+        host: "example.com",
+        path: "/api/chat",
+      },
+    },
+  });
+
+  const diagnostics = context.sentMessages.filter((message) => message.type === "DIAGNOSTIC_EVENT");
+  assert.equal(context.sentMessages.some((message) => message.type === "AI_RESPONSE_COMPLETED"), false);
+  assert.deepEqual(diagnostics.at(-1).payload, {
+    flowId: "probe:example.com:1780761600000",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    promptExcerpt: "",
+    eventType: "request_probe_matched",
+    status: "ok",
+    message: "fetch POST example.com/api/chat probe_observed_request",
+    requestKind: "fetch",
+    method: "POST",
+    host: "example.com",
+    path: "/api/chat",
+    matched: true,
+    reason: "probe_observed_request",
+  });
+  assert.equal(context.controllerCalls.handleLifecycleEvent.length, 0);
 });
 
 test("installs observers when storage changes from disabled to enabled", () => {

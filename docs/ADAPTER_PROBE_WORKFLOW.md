@@ -7,12 +7,13 @@ The goal is to adapt from evidence. First capture a small sanitized probe report
 ## Capture A Probe Report
 
 1. Load Chat Notify as an unpacked extension.
-2. Open a supported page, or temporarily add the target host to the development manifest while investigating an unsupported site.
-3. Open the popup and turn on "Debug logs" only if console details are needed.
-4. Send one short non-sensitive prompt.
-5. Wait until the AI response completes or the bug reproduces.
-6. Open the popup and click "Copy diagnostics".
-7. Paste the copied JSON into a private debugging note or issue.
+2. Open a supported page, or open the unsupported page you want to investigate.
+3. If the popup says the page is unsupported, click "Start page probe".
+4. Open the popup and turn on "Debug logs" only if console details are needed.
+5. Send one short non-sensitive prompt.
+6. Wait until the AI response completes or the bug reproduces.
+7. Open the popup and click "Copy diagnostics".
+8. Paste the copied JSON into a private debugging note or issue.
 
 Do not copy raw request bodies, raw response bodies, cookies, local storage, request headers, response headers, bearer tokens, Authorization values, or full chat content.
 
@@ -81,12 +82,13 @@ Before implementing or changing an adapter, collect evidence for each item:
 
 ## Unsupported Site Workflow
 
-For an unsupported site, the production extension should not observe every website by default.
+For an unsupported site, the production extension does not observe every website by default.
 
-Use one of these development-only approaches:
+Use the popup "Start page probe" action while the target tab is active.
 
-- Temporarily add the target host to `manifest.json` and run the normal capture flow.
-- Add a future permission-controlled probe mode that enables specific hosts only after the developer or user opts in.
+The page probe uses Chrome's `activeTab` and `scripting` permissions to inject the existing probe scripts only into the currently active tab. It does not add broad persistent host permissions. The requested probe host must match the active tab host, and the copied report stores only `currentPage.host`, not the full URL.
+
+The unsupported-site adapter is probe-only. It records sanitized same-host fetch/XHR request probes, but it does not normalize lifecycle events, does not start response monitoring, and does not send completion notifications. Its job is to reveal candidate request paths and methods for a future real adapter.
 
 Keep host permissions narrow. Do not broaden the manifest to all websites just to make adapter discovery easier.
 

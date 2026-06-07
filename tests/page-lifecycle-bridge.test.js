@@ -143,6 +143,23 @@ function installChatGptBridgeConfig(bridge) {
   });
 }
 
+function installPageProbeBridgeConfig(bridge) {
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_LIFECYCLE_BRIDGE_CONFIG",
+      config: {
+        siteId: "page-probe",
+        hosts: ["example.com"],
+        generationRequestMatchers: [{ pathnameIncludes: "/" }],
+        promptExtractor: "none",
+        probeOnly: true,
+      },
+    },
+  });
+}
+
 async function waitFor(predicate) {
   for (let index = 0; index < 20; index += 1) {
     if (predicate()) {
@@ -302,6 +319,65 @@ test("posts sanitized request probe events when debug logs are enabled", async (
   assert.equal(serialized.includes("token=secret"), false);
   assert.equal(serialized.includes("private body"), false);
   assert.equal(serialized.includes("Bearer secret"), false);
+});
+
+test("page probe observes same-host fetches as request probes without lifecycle events", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://example.com/chat",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  installPageProbeBridgeConfig(bridge);
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+      debugLogs: true,
+    },
+  });
+
+  await bridge.window.fetch("https://example.com/api/chat?token=secret", {
+    method: "POST",
+    headers: { authorization: "Bearer secret" },
+    body: "private body",
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(bridge.details())), [
+    {
+      eventType: "request_probe",
+      siteId: "page-probe",
+      requestKind: "fetch",
+      method: "POST",
+      host: "example.com",
+      path: "/api/chat",
+      matched: true,
+      reason: "probe_observed_request",
+    },
+  ]);
+  const serialized = JSON.stringify(bridge.details());
+  assert.equal(serialized.includes("token=secret"), false);
+  assert.equal(serialized.includes("private body"), false);
+  assert.equal(serialized.includes("Bearer secret"), false);
+});
+
+test("page probe ignores cross-host fetches", async () => {
+  const bridge = createBridgeWindow({
+    location: "https://example.com/chat",
+    fetchImpl: async () => new Response(null, { status: 204 }),
+  });
+  installPageProbeBridgeConfig(bridge);
+  bridge.listeners.get("message")({
+    source: bridge.window,
+    data: {
+      source: "chat-notify-content-script",
+      type: "CHAT_NOTIFY_DEBUG_LOGS_CHANGED",
+      debugLogs: true,
+    },
+  });
+
+  await bridge.window.fetch("https://other.example/api/chat", { method: "POST" });
+
+  assert.deepEqual(bridge.details(), []);
 });
 
 test("observes generation requests passed as URL objects", async () => {

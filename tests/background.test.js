@@ -4,6 +4,7 @@ const {
   MESSAGE_TYPES,
   createDiagnosticEventMessage,
   createResponseCompletedMessage,
+  createStartPageProbeMessage,
   createTestNotificationMessage,
 } = require("../src/shared/messages.js");
 const { createNotificationService } = require("../src/background/service-worker.js");
@@ -1331,6 +1332,119 @@ test("test notification failure updates notification health as failed", async ()
     state: "failed",
     message: "notifications permission missing",
     updatedAt: 1780761600000,
+  });
+});
+
+test("starts a page probe by injecting reusable scripts into the active tab", async () => {
+  const injected = [];
+  const service = createNotificationService({
+    chromeApi: {
+      runtime: {
+        getURL(path) {
+          return `chrome-extension://test/${path}`;
+        },
+      },
+      scripting: {
+        executeScript(details, callback) {
+          injected.push(details);
+          callback([{ result: true }]);
+        },
+      },
+      storage: { local: createFakeStorageArea() },
+    },
+    now: () => 1780761600000,
+  });
+
+  const result = await service.handleMessage(
+    createStartPageProbeMessage({ tabId: 7, host: "example.com" }),
+    { tab: { id: 7, url: "https://example.com/chat?token=secret" } }
+  );
+
+  assert.deepEqual(result, { ok: true, probeStarted: true, host: "example.com" });
+  assert.deepEqual(injected.map((entry) => entry.target), [{ tabId: 7 }, { tabId: 7 }, { tabId: 7 }]);
+  assert.deepEqual(injected, [
+    {
+      target: { tabId: 7 },
+      files: [
+        "src/shared/constants.js",
+        "src/shared/messages.js",
+        "src/core/prompt-excerpt.js",
+        "src/core/state-machine.js",
+        "src/core/session-tracker.js",
+        "src/core/dom-watch.js",
+        "src/adapters/adapter-contract.js",
+        "src/adapters/chatgpt-adapter.js",
+        "src/adapters/gemini-adapter.js",
+        "src/content/page-probe-adapter.js",
+        "src/core/monitor-controller.js",
+      ],
+    },
+    {
+      target: { tabId: 7 },
+      files: ["src/content/page-lifecycle-bridge.js"],
+      world: "MAIN",
+    },
+    {
+      target: { tabId: 7 },
+      files: ["src/content/content-script.js"],
+    },
+  ]);
+});
+
+test("rejects page probe requests for mismatched sender hosts", async () => {
+  const service = createNotificationService({
+    chromeApi: {
+      scripting: {
+        executeScript() {
+          throw new Error("should not inject");
+        },
+      },
+      storage: { local: createFakeStorageArea() },
+    },
+  });
+
+  const result = await service.handleMessage(
+    createStartPageProbeMessage({ tabId: 7, host: "example.com" }),
+    { tab: { id: 7, url: "https://other.example/chat" } }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Probe host does not match active tab");
+});
+
+test("records page probe start diagnostics", async () => {
+  const local = createFakeStorageArea();
+  const service = createNotificationService({
+    chromeApi: {
+      scripting: {
+        executeScript(_details, callback) {
+          callback([{ result: true }]);
+        },
+      },
+      storage: { local },
+    },
+    now: () => 1780761600000,
+  });
+
+  await service.handleMessage(
+    createStartPageProbeMessage({ tabId: 7, host: "example.com" }),
+    { tab: { id: 7, url: "https://example.com/chat" } }
+  );
+
+  assert.deepEqual(local.data.popupStatus.diagnostics.latestFlow, {
+    flowId: "probe:example.com:1780761600000",
+    siteId: "page-probe",
+    displayName: "Page Probe",
+    promptExcerpt: "",
+    updatedAt: 1780761600000,
+    events: [
+      {
+        eventType: "probe_started",
+        status: "ok",
+        message: "example.com",
+        updatedAt: 1780761600000,
+      },
+    ],
   });
 });
 

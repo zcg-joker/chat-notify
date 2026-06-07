@@ -12,6 +12,7 @@
     SET_ENABLED: "SET_ENABLED",
     LIFECYCLE_EVENT: "CHAT_NOTIFY_LIFECYCLE_EVENT",
     DIAGNOSTIC_EVENT: "DIAGNOSTIC_EVENT",
+    START_PAGE_PROBE: "START_PAGE_PROBE",
   });
 
   function cleanString(value) {
@@ -182,11 +183,22 @@
     };
   }
 
+  function createStartPageProbeMessage(input = {}) {
+    return {
+      type: MESSAGE_TYPES.START_PAGE_PROBE,
+      payload: {
+        tabId: Number.isFinite(input.tabId) ? input.tabId : null,
+        host: cleanString(input.host).toLowerCase(),
+      },
+    };
+  }
+
   return {
     MESSAGE_TYPES,
     createDiagnosticEventMessage,
     createProbeReport,
     createResponseCompletedMessage,
+    createStartPageProbeMessage,
     createTestNotificationMessage,
   };
 });

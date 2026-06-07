@@ -404,6 +404,31 @@
     };
   }
 
+  function createImplementationNotes(host, generationRequestMatchers, excludedRequestCandidates) {
+    return {
+      lifecycle: {
+        hosts: [host],
+        generationRequestMatchers: generationRequestMatchers.map((matcher) => ({ pathname: matcher.pathname })),
+        excludedPathnames: uniqueStrings(excludedRequestCandidates.map((candidate) => candidate.path)),
+        completionCheck: "Confirm the matcher stays active until the visible AI response is complete.",
+      },
+      promptExtraction: {
+        currentProbeSupport: "none",
+        nextStep: "Use visible editor text first, or add a safe request-body excerpt extractor.",
+      },
+      sendDetection: {
+        nextStep: "Confirm the page exposes a reliable button, keyboard, or editor-submit signal.",
+      },
+      sessionKey: {
+        nextStep: "Extract a stable conversation id when available, otherwise use a temporary per-tab key.",
+      },
+      edgeCases: [
+        "Confirm cancellation and failed generation do not send completion notifications.",
+        "Confirm same-tab session switching keeps lifecycle events bound to the correct prompt.",
+      ],
+    };
+  }
+
   function createStableAdapterDraft(currentPage, probeComparison) {
     const stableCandidates = probeComparison && Array.isArray(probeComparison.stableCandidates)
       ? probeComparison.stableCandidates
@@ -420,6 +445,7 @@
       .filter((candidate) => candidate.score >= 50)
       .map((candidate) => ({ pathname: candidate.path }))
       .slice(0, 3);
+    const generationRequestMatchers = matchers.length ? matchers : [{ pathname: topCandidate.path }];
     const excludedRequestCandidates = Array.isArray(probeComparison.stableIgnoredCandidates)
       ? probeComparison.stableIgnoredCandidates.map((candidate) => ({
           requestKind: candidate.requestKind,
@@ -441,9 +467,10 @@
       promptExtractorSuggestion: "none",
       lifecycleBridgeConfigSuggestion: {
         hosts: [host],
-        generationRequestMatchers: matchers.length ? matchers : [{ pathname: topCandidate.path }],
+        generationRequestMatchers,
       },
       excludedRequestCandidates,
+      implementationNotes: createImplementationNotes(host, generationRequestMatchers, excludedRequestCandidates),
       source: "probeComparison.stableCandidates",
       rationale: [
         `Stable candidate ${topCandidate.path} appeared in ${

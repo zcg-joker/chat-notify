@@ -37,6 +37,7 @@ The copied report is intentionally small and adapter-focused.
 - `recommendation.nextActions`: concrete follow-up checks for the next probe or adapter-draft step.
 - `adapterDraft`: a first-pass adapter draft generated from `probeComparison.stableCandidates`, only when `recommendation.status` is `ready_for_adapter_draft`.
 - `adapterDraft.excludedRequestCandidates`: stable ignored candidates to keep out of generation matchers.
+- `adapterDraft.implementationNotes`: structured adapter handoff notes for lifecycle matchers, prompt extraction, send detection, session keys, and edge-case checks.
 - `latestFlow.siteId`: the adapter that handled the latest observed flow.
 - `latestFlow.promptExcerpt`: a short sanitized prompt excerpt.
 - `latestFlow.summary.totalEvents`: number of stored diagnostic events.
@@ -115,7 +116,7 @@ Use `recommendation` as the first triage result for retained probe samples. `ins
 
 Use `likelyGenerationCandidates` as a first-pass reading aid. It favors POST requests, EventSource/WebSocket streaming transports, and paths containing generation, chat, stream, completion, message, response, or answer signals, and it downranks telemetry, analytics, prepare, warmup, and metadata-like paths. This ranking is heuristic; always confirm the final adapter matcher against real completion behavior.
 
-Use top-level `adapterDraft` as a cross-sample handoff sketch, not as generated production code. It is generated only after `recommendation.status` reaches `ready_for_adapter_draft`; if the report says `collect_more_samples`, collect the missing scenarios before treating any stable candidate as an adapter draft. The draft suggests bridge matchers from the stable retained candidates, carries `excludedRequestCandidates` from repeated ignored probes, and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching.
+Use top-level `adapterDraft` as a cross-sample handoff sketch, not as generated production code. It is generated only after `recommendation.status` reaches `ready_for_adapter_draft`; if the report says `collect_more_samples`, collect the missing scenarios before treating any stable candidate as an adapter draft. The draft suggests bridge matchers from the stable retained candidates, carries `excludedRequestCandidates` from repeated ignored probes, and lists `manualChecks` that must be verified before implementing a real adapter: completion timing, prompt extraction, send detection, session keys, cancellation, and same-tab session switching. The `implementationNotes` object repeats the safe host/path matcher data in a machine-readable shape and groups the remaining implementation decisions by lifecycle, prompt extraction, send detection, session key strategy, and edge cases.
 
 Use `latestFlow.adapterDraft` only as a single-flow sketch when stable cross-sample evidence is not available yet.
 

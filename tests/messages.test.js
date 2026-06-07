@@ -785,6 +785,28 @@ test("createProbeReport compares probe samples and highlights stable candidates"
         scenarios: ["short_response", "long_response"],
       },
     ],
+    implementationNotes: {
+      lifecycle: {
+        hosts: ["example.com"],
+        generationRequestMatchers: [{ pathname: "/api/chat/stream" }],
+        excludedPathnames: ["/api/prepare"],
+        completionCheck: "Confirm the matcher stays active until the visible AI response is complete.",
+      },
+      promptExtraction: {
+        currentProbeSupport: "none",
+        nextStep: "Use visible editor text first, or add a safe request-body excerpt extractor.",
+      },
+      sendDetection: {
+        nextStep: "Confirm the page exposes a reliable button, keyboard, or editor-submit signal.",
+      },
+      sessionKey: {
+        nextStep: "Extract a stable conversation id when available, otherwise use a temporary per-tab key.",
+      },
+      edgeCases: [
+        "Confirm cancellation and failed generation do not send completion notifications.",
+        "Confirm same-tab session switching keeps lifecycle events bound to the correct prompt.",
+      ],
+    },
     source: "probeComparison.stableCandidates",
     rationale: [
       "Stable candidate /api/chat/stream appeared in 2/2 retained probe samples.",
@@ -798,7 +820,7 @@ test("createProbeReport compares probe samples and highlights stable candidates"
     ],
   });
 
-  const serialized = JSON.stringify(report.probeComparison);
+  const serialized = JSON.stringify(report.adapterDraft);
   assert.equal(serialized.includes("token=secret"), false);
 });
 

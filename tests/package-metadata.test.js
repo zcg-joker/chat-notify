@@ -59,6 +59,7 @@ test("README mentions Gemini and diagnostics", () => {
 
   assert.match(readme, /Gemini/);
   assert.match(readme, /recent activity|diagnostics/i);
+  assert.match(readme, /probe recommendation/i);
 });
 
 test("README explains diagnostics privacy boundaries", () => {
@@ -91,6 +92,7 @@ test("Chinese README mentions Gemini and recent activity diagnostics", () => {
 
   assert.match(readme, /Gemini/);
   assert.match(readme, /最近活动|诊断/);
+  assert.match(readme, /探测推荐/);
 });
 
 test("Chinese README explains diagnostics privacy boundaries", () => {

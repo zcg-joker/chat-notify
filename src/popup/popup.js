@@ -118,6 +118,29 @@
   }
 
   function renderProbePreview(diagnostics) {
+    const recommendation = diagnostics && diagnostics.recommendation;
+    if (recommendation && recommendation.status) {
+      probeReadiness.textContent = titleCaseStatus(recommendation.status);
+      const candidate = recommendation.primaryCandidate;
+      if (candidate) {
+        const stability = candidate.stability ? `, ${candidate.stability}` : "";
+        probeTopCandidate.textContent = `Candidate: ${formatCandidate(candidate)} (score ${
+          candidate.score || 0
+        }${stability})`;
+      } else {
+        probeTopCandidate.textContent = recommendation.summary || "";
+      }
+      const nextActions = Array.isArray(recommendation.nextActions) ? recommendation.nextActions : [];
+      const missingScenarios = Array.isArray(recommendation.missingScenarios)
+        ? recommendation.missingScenarios
+        : [];
+      probeRisk.textContent = [
+        nextActions.length ? `Next: ${nextActions[0]}` : "",
+        missingScenarios.length ? `Missing: ${missingScenarios.join(", ")}` : "",
+      ].filter(Boolean).join(" ");
+      return;
+    }
+
     const comparison = diagnostics && diagnostics.probeComparison;
     const stableCandidates = comparison && Array.isArray(comparison.stableCandidates)
       ? comparison.stableCandidates

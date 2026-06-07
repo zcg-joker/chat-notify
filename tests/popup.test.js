@@ -399,6 +399,62 @@ test("popup prioritizes stable probe candidates in preview", () => {
   assert.equal(popup.elements["probe-risk"].textContent, "Samples: 3");
 });
 
+test("popup prioritizes probe recommendation in preview", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat",
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          recommendation: {
+            status: "collect_more_samples",
+            summary: "Stable candidate found, but key probe scenarios are still missing.",
+            missingScenarios: ["long_response"],
+            primaryCandidate: {
+              requestKind: "fetch",
+              method: "POST",
+              host: "example.com",
+              path: "/api/chat/stream",
+              score: 90,
+              stability: "2/2",
+              scenarios: ["short_response"],
+            },
+            nextActions: [
+              "Run page probe for a long response.",
+              "Confirm the stable candidate appears in the missing scenarios.",
+            ],
+          },
+          probeComparison: {
+            sampleCount: 2,
+            stableCandidates: [
+              {
+                requestKind: "fetch",
+                method: "POST",
+                host: "example.com",
+                path: "/api/chat/stream",
+                score: 90,
+                stability: "2/2",
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["probe-readiness"].textContent, "Collect more samples");
+  assert.equal(
+    popup.elements["probe-top-candidate"].textContent,
+    "Candidate: POST example.com/api/chat/stream via fetch (score 90, 2/2)",
+  );
+  assert.equal(
+    popup.elements["probe-risk"].textContent,
+    "Next: Run page probe for a long response. Missing: long_response",
+  );
+});
+
 test("popup renders Gemini recent activity timeline from diagnostics", () => {
   const popup = runPopup({
     tabUrl: "https://gemini.google.com/app",

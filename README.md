@@ -16,6 +16,7 @@ Chat Notify is a privacy-conscious browser extension that sends a browser/system
 - Click a completion notification to return to and focus the source tab.
 - Shows popup status for the current page, extension, notification health, last completion, and Recent activity diagnostics.
 - Recent activity shows where the latest monitoring flow reached.
+- Shows a probe recommendation in the popup when retained page-probe samples indicate whether more evidence is needed or an adapter draft can start.
 - Keeps debug logs off by default.
 
 The current Alpha supports ChatGPT and the regular Gemini web app:
@@ -79,7 +80,7 @@ Debug logs are disabled by default. When enabled, logs may include prompt excerp
 
 If notifications do not appear, check popup Recent activity first to see where the latest monitoring flow reached. Then enable debug logs for console details if needed. For detailed steps, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 
-Developers adapting new AI sites should start from sanitized probe evidence instead of guessing request behavior. See the [Adapter probe workflow](docs/ADAPTER_PROBE_WORKFLOW.md).
+Developers adapting new AI sites should start from sanitized probe evidence instead of guessing request behavior. The popup probe recommendation summarizes whether the retained samples are still insufficient, need more scenarios, or are ready for an adapter draft. See the [Adapter probe workflow](docs/ADAPTER_PROBE_WORKFLOW.md).
 
 ## Current Limits
 

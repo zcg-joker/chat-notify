@@ -21,6 +21,12 @@
   const { MESSAGE_TYPES } = messages;
   const LOG_PREFIX = "[Chat Notify]";
   const NOTIFICATION_ICON_PATH = "assets/icon-128.png";
+  const POPUP_STATUS_KEY = "popupStatus";
+  const NOTIFICATION_TARGETS_KEY = "notificationTargets";
+  const DEFAULT_POPUP_STATUS = Object.freeze({
+    notificationHealth: Object.freeze({ state: "not_tested", message: "", updatedAt: null }),
+    lastCompletion: Object.freeze({ state: "none", siteId: "", updatedAt: null }),
+  });
 
   function log(level, message, detail) {
     if (typeof console === "undefined" || typeof console[level] !== "function") {
@@ -59,12 +65,249 @@
   function createNotificationService(options = {}) {
     const chromeApi = options.chromeApi || globalThis.chrome;
     const now = typeof options.now === "function" ? options.now : () => Date.now();
+    let memoryNotificationTargets = {};
+    let memoryPopupStatus = clonePopupStatus(DEFAULT_POPUP_STATUS);
+    let notificationTargetsMemoryAuthoritative = false;
+    let popupStatusMemoryAuthoritative = false;
+    let notificationCounter = 0;
+    let notificationTargetMutation = Promise.resolve();
+
+    function isFiniteNumber(value) {
+      return Number.isFinite(value);
+    }
+
+    function clonePopupStatus(status) {
+      const source = status || DEFAULT_POPUP_STATUS;
+      return {
+        notificationHealth: Object.assign(
+          {},
+          DEFAULT_POPUP_STATUS.notificationHealth,
+          source.notificationHealth || {}
+        ),
+        lastCompletion: Object.assign(
+          {},
+          DEFAULT_POPUP_STATUS.lastCompletion,
+          source.lastCompletion || {}
+        ),
+      };
+    }
+
+    function getStorageArea(name) {
+      return chromeApi && chromeApi.storage && chromeApi.storage[name];
+    }
+
+    function getRuntimeLastError() {
+      const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+      if (lastError && chromeApi.runtime) {
+        try {
+          delete chromeApi.runtime.lastError;
+        } catch (_error) {
+          chromeApi.runtime.lastError = undefined;
+        }
+      }
+      return lastError;
+    }
+
+    function storageGet(area, defaults, fallback) {
+      const fallbackValues = fallback || defaults || {};
+      return new Promise((resolve) => {
+        if (!area || typeof area.get !== "function") {
+          resolve(Object.assign({}, fallbackValues));
+          return;
+        }
+        try {
+          area.get(defaults || {}, (values) => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              resolve(Object.assign({}, fallbackValues));
+              return;
+            }
+            resolve(Object.assign({}, defaults || {}, values || {}));
+          });
+        } catch (_error) {
+          resolve(Object.assign({}, fallbackValues));
+        }
+      });
+    }
+
+    function storageSet(area, values) {
+      return new Promise((resolve) => {
+        if (!area || typeof area.set !== "function") {
+          resolve({ ok: false });
+          return;
+        }
+        try {
+          area.set(values, () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              resolve({ ok: false, error: lastError.message || String(lastError) });
+              return;
+            }
+            resolve({ ok: true });
+          });
+        } catch (error) {
+          resolve({ ok: false, error: error && error.message ? error.message : String(error) });
+        }
+      });
+    }
+
+    function updateWindow(windowId, optionsForWindow) {
+      return new Promise((resolve) => {
+        if (!chromeApi.windows || typeof chromeApi.windows.update !== "function") {
+          resolve({ ok: false, error: "windows.update unavailable" });
+          return;
+        }
+        try {
+          chromeApi.windows.update(windowId, optionsForWindow, () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              resolve({ ok: false, error: lastError.message || String(lastError) });
+              return;
+            }
+            resolve({ ok: true });
+          });
+        } catch (error) {
+          resolve({ ok: false, error: error && error.message ? error.message : String(error) });
+        }
+      });
+    }
+
+    function updateTab(tabId, optionsForTab) {
+      return new Promise((resolve) => {
+        if (!chromeApi.tabs || typeof chromeApi.tabs.update !== "function") {
+          resolve({ ok: false, error: "tabs.update unavailable" });
+          return;
+        }
+        try {
+          chromeApi.tabs.update(tabId, optionsForTab, () => {
+            const lastError = getRuntimeLastError();
+            if (lastError) {
+              resolve({ ok: false, error: lastError.message || String(lastError) });
+              return;
+            }
+            resolve({ ok: true });
+          });
+        } catch (error) {
+          resolve({ ok: false, error: error && error.message ? error.message : String(error) });
+        }
+      });
+    }
+
+    async function getPopupStatus() {
+      const local = getStorageArea("local");
+      if (!local || popupStatusMemoryAuthoritative) {
+        return clonePopupStatus(memoryPopupStatus);
+      }
+      const values = await storageGet(
+        local,
+        { [POPUP_STATUS_KEY]: clonePopupStatus(DEFAULT_POPUP_STATUS) },
+        { [POPUP_STATUS_KEY]: clonePopupStatus(memoryPopupStatus) }
+      );
+      return clonePopupStatus(values[POPUP_STATUS_KEY]);
+    }
+
+    async function setPopupStatus(nextStatus) {
+      const sanitized = clonePopupStatus(nextStatus);
+      memoryPopupStatus = clonePopupStatus(sanitized);
+      const writeResult = await storageSet(getStorageArea("local"), { [POPUP_STATUS_KEY]: sanitized });
+      popupStatusMemoryAuthoritative = !writeResult.ok;
+      return sanitized;
+    }
+
+    async function patchPopupStatus(patch) {
+      const current = await getPopupStatus();
+      return setPopupStatus({
+        notificationHealth: Object.assign({}, current.notificationHealth, patch.notificationHealth || {}),
+        lastCompletion: Object.assign({}, current.lastCompletion, patch.lastCompletion || {}),
+      });
+    }
+
+    async function getNotificationTargets() {
+      const session = getStorageArea("session");
+      if (!session || notificationTargetsMemoryAuthoritative) {
+        return Object.assign({}, memoryNotificationTargets);
+      }
+      const values = await storageGet(
+        session,
+        { [NOTIFICATION_TARGETS_KEY]: {} },
+        { [NOTIFICATION_TARGETS_KEY]: Object.assign({}, memoryNotificationTargets) }
+      );
+      return Object.assign({}, values[NOTIFICATION_TARGETS_KEY] || {});
+    }
+
+    async function setNotificationTargets(targets) {
+      const sanitizedTargets = Object.keys(targets || {}).reduce((result, notificationId) => {
+        const target = targets[notificationId] || {};
+        if (!target.notificationId || !isFiniteNumber(target.tabId)) {
+          return result;
+        }
+        result[notificationId] = {
+          notificationId: String(target.notificationId),
+          tabId: target.tabId,
+          createdAt: isFiniteNumber(target.createdAt) ? target.createdAt : now(),
+        };
+        if (isFiniteNumber(target.windowId)) {
+          result[notificationId].windowId = target.windowId;
+        }
+        return result;
+      }, {});
+      memoryNotificationTargets = Object.assign({}, sanitizedTargets);
+      const writeResult = await storageSet(getStorageArea("session"), { [NOTIFICATION_TARGETS_KEY]: sanitizedTargets });
+      notificationTargetsMemoryAuthoritative = !writeResult.ok;
+      return sanitizedTargets;
+    }
+
+    function mutateNotificationTargets(mutator) {
+      const mutation = notificationTargetMutation.then(async () => {
+        const targets = await getNotificationTargets();
+        const nextTargets = mutator(targets) || targets;
+        return setNotificationTargets(nextTargets);
+      });
+      notificationTargetMutation = mutation.catch(() => {});
+      return mutation;
+    }
+
+    async function storeNotificationTarget(notificationId, sourceTabId, sender) {
+      if (!isFiniteNumber(sourceTabId)) {
+        return;
+      }
+      const target = {
+        notificationId,
+        tabId: sourceTabId,
+        createdAt: now(),
+      };
+      if (
+        sender &&
+        sender.tab &&
+        sender.tab.id === sourceTabId &&
+        isFiniteNumber(sender.tab.windowId)
+      ) {
+        target.windowId = sender.tab.windowId;
+      }
+      await mutateNotificationTargets((targets) => {
+        targets[notificationId] = target;
+        return targets;
+      });
+    }
+
+    async function clearNotificationTarget(notificationId) {
+      let cleared = false;
+      await mutateNotificationTargets((targets) => {
+        if (!Object.prototype.hasOwnProperty.call(targets, notificationId)) {
+          return targets;
+        }
+        cleared = true;
+        delete targets[notificationId];
+        return targets;
+      });
+      return cleared;
+    }
 
     function notify(id, optionsForNotification) {
       return new Promise((resolve) => {
         try {
           chromeApi.notifications.create(id, optionsForNotification, (createdId) => {
-            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            const lastError = getRuntimeLastError();
             if (lastError) {
               resolve({ ok: false, error: lastError.message || String(lastError) });
               return;
@@ -86,7 +329,7 @@
 
         try {
           chromeApi.storage.sync.get({ enabled: true }, (settings) => {
-            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            const lastError = getRuntimeLastError();
             if (lastError) {
               resolve(true);
               return;
@@ -108,7 +351,7 @@
 
         try {
           chromeApi.storage.sync.get({ debugLogs: false }, (settings) => {
-            const lastError = chromeApi.runtime && chromeApi.runtime.lastError;
+            const lastError = getRuntimeLastError();
             if (lastError) {
               resolve(false);
               return;
@@ -130,6 +373,10 @@
       };
 
       writeLog("debug", "background message received", { type: message && message.type, senderTabId: sender.tab && sender.tab.id });
+      if (message && message.type === MESSAGE_TYPES.GET_POPUP_STATUS) {
+        return { ok: true, popupStatus: await getPopupStatus() };
+      }
+
       if (message && message.type === MESSAGE_TYPES.TEST_NOTIFICATION) {
         const id = `chat-notify:test:${now()}`;
         const notificationResult = await notify(id, {
@@ -140,9 +387,23 @@
           priority: 1,
         });
         if (!notificationResult.ok) {
+          await patchPopupStatus({
+            notificationHealth: {
+              state: "failed",
+              message: notificationResult.error || "",
+              updatedAt: now(),
+            },
+          });
           writeLog("warn", "test notification failed", notificationResult.error);
           return { ok: false, error: notificationResult.error, notificationId: id };
         }
+        await patchPopupStatus({
+          notificationHealth: {
+            state: "ok",
+            message: "",
+            updatedAt: now(),
+          },
+        });
         writeLog("info", "test notification created", id);
         return { ok: true, notificationId: id };
       }
@@ -160,29 +421,72 @@
       const payload = message.payload || {};
       const sourceTabId =
         Number.isFinite(payload.sourceTabId) ? payload.sourceTabId : sender.tab && sender.tab.id;
+      notificationCounter += 1;
       const id = [
         "chat-notify",
         sanitizeNotificationIdPart(payload.siteId),
-        sanitizeNotificationIdPart(payload.sessionKey),
         sanitizeNotificationIdPart(sourceTabId),
         now(),
+        notificationCounter,
       ].join(":");
 
+      if (isFiniteNumber(sourceTabId)) {
+        await storeNotificationTarget(id, sourceTabId, sender);
+      }
       const notificationResult = await notify(id, buildCompletionNotification(payload, chromeApi));
       if (!notificationResult.ok) {
+        await clearNotificationTarget(id);
+        await patchPopupStatus({
+          lastCompletion: {
+            state: "failed",
+            siteId: payload.siteId || "",
+            updatedAt: now(),
+          },
+        });
         writeLog("warn", "completion notification failed", notificationResult.error);
         return { ok: false, error: notificationResult.error, notificationId: id };
       }
+      await patchPopupStatus({
+        lastCompletion: {
+          state: "sent",
+          siteId: payload.siteId || "",
+          updatedAt: now(),
+        },
+      });
       writeLog("info", "completion notification created", {
         notificationId: id,
         siteId: payload.siteId,
-        sessionKey: payload.sessionKey,
       });
       return { ok: true, notificationId: id };
     }
 
+    async function handleNotificationClicked(notificationId) {
+      const targets = await getNotificationTargets();
+      const target = targets[notificationId];
+      if (!target || !isFiniteNumber(target.tabId)) {
+        return { ok: false, ignored: true };
+      }
+
+      const focusResult = isFiniteNumber(target.windowId)
+        ? await updateWindow(target.windowId, { focused: true })
+        : { ok: true };
+      const tabResult = await updateTab(target.tabId, { active: true });
+      await clearNotificationTarget(notificationId);
+
+      if (focusResult.ok && tabResult.ok) {
+        return { ok: true, focused: true };
+      }
+      return {
+        ok: false,
+        focused: false,
+        cleared: true,
+        error: focusResult.error || tabResult.error || "Unable to focus notification target",
+      };
+    }
+
     return {
       handleMessage,
+      handleNotificationClicked,
       buildCompletionNotification,
       resolveNotificationIcon: () => resolveNotificationIcon(chromeApi),
     };
@@ -202,11 +506,23 @@
         });
       return true;
     });
+    if (
+      chrome.notifications &&
+      chrome.notifications.onClicked &&
+      typeof chrome.notifications.onClicked.addListener === "function"
+    ) {
+      chrome.notifications.onClicked.addListener((notificationId) => {
+        service.handleNotificationClicked(notificationId).catch((error) => {
+          log("warn", "notification click handling failed", error && error.message ? error.message : String(error));
+        });
+      });
+    }
   }
 
   return {
     createNotificationService,
     buildCompletionNotification,
     resolveNotificationIcon,
+    DEFAULT_POPUP_STATUS,
   };
 });

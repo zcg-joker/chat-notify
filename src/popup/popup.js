@@ -261,12 +261,32 @@
     renderProbePreview(diagnostics);
   }
 
+  function createDiagnosticsPreview(status) {
+    const diagnostics = status && status.diagnostics;
+    if (!diagnostics || !ChatNotify || typeof ChatNotify.createProbeReport !== "function") {
+      return diagnostics;
+    }
+    const report = ChatNotify.createProbeReport({
+      generatedAt: Date.now(),
+      currentPage: latestPageInfo,
+      settings: latestSettings,
+      popupStatus: status,
+    });
+    const preview = Object.assign({}, diagnostics);
+    ["probeComparison", "recommendation", "handoffSummary", "adapterChecklist", "adapterDraft"].forEach((field) => {
+      if (report[field] !== undefined) {
+        preview[field] = report[field];
+      }
+    });
+    return preview;
+  }
+
   function renderPopupStatus(response) {
     const status = response && (response.popupStatus || response.status);
     latestPopupStatus = status || null;
     renderNotificationHealth(status && status.notificationHealth);
     renderLastCompletion(status && status.lastCompletion);
-    renderDiagnostics(status && status.diagnostics);
+    renderDiagnostics(createDiagnosticsPreview(status));
   }
 
   function renderExtensionStatus() {

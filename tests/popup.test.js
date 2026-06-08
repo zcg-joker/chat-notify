@@ -41,6 +41,7 @@ function runPopup({
   startProbeResponse = { ok: true, probeStarted: true, host: "example.com" },
   runtimeLastError = null,
   clipboardWriteText,
+  createProbeReport,
 } = {}) {
   const source = fs.readFileSync(POPUP_JS_PATH, "utf8");
   const elements = {
@@ -117,7 +118,7 @@ function runPopup({
       createStartPageProbeMessage(input) {
         return { type: "START_PAGE_PROBE", payload: input };
       },
-      createProbeReport(input) {
+      createProbeReport: createProbeReport || function createProbeReport(input) {
         return {
           schemaVersion: 1,
           currentPage: input.currentPage,
@@ -407,6 +408,68 @@ test("popup prioritizes stable probe candidates in preview", () => {
     popup.elements["probe-risk"].textContent,
     "Samples: 3; Covered: short_response, long_response, tab_switch",
   );
+});
+
+test("popup derives probe preview fields from raw retained probe samples", () => {
+  const popup = runPopup({
+    tabUrl: "https://example.com/chat",
+    createProbeReport(input) {
+      assert.equal(input.currentPage.host, "example.com");
+      assert.equal(input.popupStatus.diagnostics.probeSamples.length, 2);
+      return {
+        probeComparison: {
+          sampleCount: 2,
+          scenarioCoverage: [
+            { scenario: "short_response", sampleCount: 1, latestUpdatedAt: 1780761601000 },
+            { scenario: "long_response", sampleCount: 0, latestUpdatedAt: null },
+          ],
+        },
+        recommendation: {
+          status: "collect_more_samples",
+          summary: "Stable candidate found, but key probe scenarios are still missing.",
+          missingScenarios: ["long_response"],
+          primaryCandidate: {
+            requestKind: "fetch",
+            method: "POST",
+            host: "example.com",
+            path: "/api/chat/stream",
+            score: 90,
+            stability: "2/2",
+          },
+          nextActions: ["Run page probe for a long response."],
+        },
+        adapterChecklist: [
+          {
+            item: "scenario_coverage",
+            status: "needs_more_evidence",
+            missing: ["long_response"],
+          },
+        ],
+      };
+    },
+    statusResponse: {
+      ok: true,
+      popupStatus: {
+        notificationHealth: { state: "not_tested", message: "", updatedAt: null },
+        lastCompletion: { state: "none", siteId: "", updatedAt: null },
+        diagnostics: {
+          latestFlow: null,
+          probeSamples: [
+            { flowId: "probe:example.com:short", scenario: "short_response", requestCandidates: [] },
+            { flowId: "probe:example.com:long", scenario: "long_response", requestCandidates: [] },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(popup.elements["probe-readiness"].textContent, "Collect more samples");
+  assert.equal(popup.elements["probe-scenario"].value, "long_response");
+  assert.equal(
+    popup.elements["probe-top-candidate"].textContent,
+    "Candidate: POST example.com/api/chat/stream via fetch (score 90, 2/2); Samples: 2; Covered: short_response",
+  );
+  assert.equal(popup.elements["probe-risk"].textContent, "Blocked: scenario_coverage needs long_response");
 });
 
 test("popup prioritizes probe recommendation in preview", () => {

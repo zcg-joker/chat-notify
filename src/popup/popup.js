@@ -36,6 +36,15 @@
     request_probe_matched: "Request matched",
     request_probe_ignored: "Request ignored",
   };
+  const PROBE_SCENARIOS = [
+    "short_response",
+    "long_response",
+    "tab_switch",
+    "same_tab_session_switch",
+    "canceled_generation",
+    "failed_generation",
+    "unspecified",
+  ];
 
   function shortError(value) {
     if (!value) {
@@ -149,7 +158,20 @@
     return blocker.nextStep ? `Blocked: ${itemName}: ${blocker.nextStep}` : `Blocked: ${itemName}`;
   }
 
+  function selectRecommendedProbeScenario(checklist) {
+    const items = Array.isArray(checklist) ? checklist : [];
+    const scenarioCoverage = items.find((item) => item && item.item === "scenario_coverage");
+    const missingScenarios = scenarioCoverage && Array.isArray(scenarioCoverage.missing)
+      ? scenarioCoverage.missing
+      : [];
+    const nextScenario = missingScenarios.find((scenario) => PROBE_SCENARIOS.includes(scenario));
+    if (nextScenario) {
+      probeScenarioSelect.value = nextScenario;
+    }
+  }
+
   function renderProbePreview(diagnostics) {
+    selectRecommendedProbeScenario(diagnostics && diagnostics.adapterChecklist);
     const recommendation = diagnostics && diagnostics.recommendation;
     if (recommendation && recommendation.status) {
       probeReadiness.textContent = titleCaseStatus(recommendation.status);

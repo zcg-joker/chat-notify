@@ -475,6 +475,7 @@ test("popup prioritizes probe recommendation in preview", () => {
   });
 
   assert.equal(popup.elements["probe-readiness"].textContent, "Collect more samples");
+  assert.equal(popup.elements["probe-scenario"].value, "long_response");
   assert.equal(
     popup.elements["probe-top-candidate"].textContent,
     "Candidate: POST example.com/api/chat/stream via fetch (score 90, 2/2); Samples: 2; Covered: short_response",
